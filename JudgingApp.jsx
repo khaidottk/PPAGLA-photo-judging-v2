@@ -12,6 +12,17 @@ const CREDENTIALS_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1v
 // Apps Script URL (receives votes, returns history)
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz41CcyUe-t3xUe6dieFH0jRsaoC0CYrc9FIYhShV_ouIafCO9FGrFJwGUIeAqoYQcc/exec";
 
+// Maps the essay_id PREFIX (before the first "-") to its canonical top-level
+// category name. This ensures essay entries are always grouped correctly under
+// "Photo Essay", "Picture Story" etc. even if the category column in the
+// spreadsheet contains something else (e.g. a caption or the essay title).
+// Add or change entries here if new essay types are introduced.
+const ESSAY_ID_CATEGORY_MAP = {
+  "PHOT": "Photo Essay",
+  "PICT": "Picture Story",
+  "POY":  "POY",
+};
+
 // ============================================================
 // CREDENTIALS PARSER
 // Expects columns: judgeId, password, role
@@ -88,14 +99,21 @@ function parseEntriesCSV(csv) {
   lines.slice(1).forEach((line) => {
     if (!line.trim()) return;
     const c = parseLine(line);
-    const catName = c[iCat]; if (!catName) return;
+    const essayId = c[iEssId] || "";
+    // Derive parent category: if the essay_id has a known prefix (e.g. "PHOT-001"
+    // → "Photo Essay"), use that — regardless of what the category column says.
+    // This makes essay grouping robust even when the category column is wrong.
+    const essayPrefix = essayId ? essayId.split("-")[0].toUpperCase() : "";
+    const mappedCat   = ESSAY_ID_CATEGORY_MAP[essayPrefix] || null;
+    const catName     = mappedCat || c[iCat];
+    if (!catName) return;
     if (!catRaw.has(catName)) catRaw.set(catName, []);
     const rawUrl    = (iUrl   >= 0 ? c[iUrl]   : "") || "";
     const driveId   = (iDrive >= 0 ? c[iDrive] : "") || "";
     const imageUrl  = rawUrl || driveThumbUrl(driveId);
     catRaw.get(catName).push({
       entryId:     c[iEId]  || "",
-      essayId:     c[iEssId]|| "",
+      essayId,                        // already extracted above
       essayTitle:  c[iEssT] || "",
       imageNumber: parseInt(c[iImgN] || "0", 10) || 0,
       filename:    c[iFile] || "",

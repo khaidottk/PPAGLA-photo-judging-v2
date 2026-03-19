@@ -100,12 +100,7 @@ function parseEntriesCSV(csv) {
     if (!line.trim()) return;
     const c = parseLine(line);
     const essayId = c[iEssId] || "";
-    // Derive parent category: if the essay_id has a known prefix (e.g. "PHOT-001"
-    // → "Photo Essay"), use that — regardless of what the category column says.
-    // This makes essay grouping robust even when the category column is wrong.
-    const essayPrefix = essayId ? essayId.split("-")[0].toUpperCase() : "";
-    const mappedCat   = ESSAY_ID_CATEGORY_MAP[essayPrefix] || null;
-    const catName     = mappedCat || c[iCat];
+    const catName = c[iCat];
     if (!catName) return;
     if (!catRaw.has(catName)) catRaw.set(catName, []);
     const rawUrl    = (iUrl   >= 0 ? c[iUrl]   : "") || "";

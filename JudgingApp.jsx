@@ -26,6 +26,11 @@ const ESSAY_ID_CATEGORY_MAP = {
 // Category names that belong inside the Photo Essay folder in the browse view
 const ESSAY_FOLDER_NAMES = new Set(Object.values(ESSAY_ID_CATEGORY_MAP));
 
+// Maps raw CSV category names to their display labels
+const CATEGORY_DISPLAY_NAMES = {
+  "GenNews": "General News",
+};
+
 // ============================================================
 // CREDENTIALS PARSER
 // Expects columns: judgeId, password, role
@@ -754,6 +759,7 @@ export default function JudgingApp() {
             const isDone    = submittedCats.has(cat.id);
             const isNoAward = noAwardCats.has(cat.id);
             const cardState = isDone ? "done" : isNoAward ? "noaward" : "default";
+            const displayName = CATEGORY_DISPLAY_NAMES[cat.name] || cat.name;
             return (
               <div key={cat.id} style={S.catCard(cardState)}
                 onClick={() => handleCategorySelect(cat)}
@@ -762,7 +768,7 @@ export default function JudgingApp() {
               >
                 {isDone    && <span style={S.catBadgeDone}>✓ Done</span>}
                 {isNoAward && <span style={S.catBadgeNoAward}>— No Award</span>}
-                <div style={S.catName}>{cat.name}</div>
+                <div style={S.catName}>{displayName}</div>
                 <div style={S.catCount}>
                   {cat.isEssayCategory
                     ? `${cat.entries.length} ${cat.entries.length === 1 ? "submission" : "submissions"}`
@@ -842,7 +848,7 @@ export default function JudgingApp() {
               onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
               onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
               onClick={() => { setViewingEssay(null); setLightbox(null); }}>
-              ← {selectedCat.name}
+              ← {CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}
             </button>
           </div>
           <div style={S.judgeWrap}>
@@ -907,7 +913,7 @@ export default function JudgingApp() {
           </button>
         </div>
         <div style={S.judgeWrap}>
-          <h1 style={S.catTitle}>{selectedCat.name}</h1>
+          <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a submission to view all its photos and vote
           </div>
@@ -967,7 +973,7 @@ export default function JudgingApp() {
           </button>
         </div>
         <div style={S.judgeWrap}>
-          <h1 style={S.catTitle}>{selectedCat.name}</h1>
+          <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge · All placements optional · Up to {MAX_HMS} HMs
           </div>

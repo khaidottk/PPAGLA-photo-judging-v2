@@ -23,6 +23,9 @@ const ESSAY_ID_CATEGORY_MAP = {
   "POY":  "POY",
 };
 
+// Category names that belong inside the Photo Essay folder in the browse view
+const ESSAY_FOLDER_NAMES = new Set(Object.values(ESSAY_ID_CATEGORY_MAP));
+
 // ============================================================
 // CREDENTIALS PARSER
 // Expects columns: judgeId, password, role
@@ -744,8 +747,8 @@ export default function JudgingApp() {
           <p style={S.heroSub}>All placements are optional. Award only what the work deserves.</p>
         </div>
         {(() => {
-          const essayCats   = categories.filter((c) => c.isEssayCategory);
-          const regularCats = categories.filter((c) => !c.isEssayCategory);
+          const essayCats   = categories.filter((c) => ESSAY_FOLDER_NAMES.has(c.name));
+          const regularCats = categories.filter((c) => !ESSAY_FOLDER_NAMES.has(c.name));
 
           const renderCatCard = (cat) => {
             const isDone    = submittedCats.has(cat.id);

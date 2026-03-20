@@ -242,6 +242,7 @@ export default function JudgingApp() {
   const [submittedCats, setSubmittedCats] = useState(new Set()); // submitted with ≥1 vote
   const [noAwardCats, setNoAwardCats]     = useState(new Set()); // submitted with 0 votes
   const [judgeHistory, setJudgeHistory]   = useState(null);
+  const [viewingEssayFolder, setViewingEssayFolder] = useState(false);
 
   // ── Admin state ─────────────────────────────────────────────
   const [adminProgress, setAdminProgress] = useState({});   // {judgeId: [catName…]}
@@ -472,6 +473,7 @@ export default function JudgingApp() {
     catEssayTag: { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
     catBadgeDone:    { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#7acc7a", letterSpacing: "0.5px" },
     catBadgeNoAward: { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#9a9590", letterSpacing: "0.5px" },
+    catFolderTag:    { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
 
     // Navigation
     backNav: { padding: "24px 24px 0", maxWidth: 880, margin: "0 auto" },
@@ -741,8 +743,11 @@ export default function JudgingApp() {
           <h1 style={S.heroTitle}>Select a Category</h1>
           <p style={S.heroSub}>All placements are optional. Award only what the work deserves.</p>
         </div>
-        <div style={S.catGrid}>
-          {categories.map((cat) => {
+        {(() => {
+          const essayCats   = categories.filter((c) => c.isEssayCategory);
+          const regularCats = categories.filter((c) => !c.isEssayCategory);
+
+          const renderCatCard = (cat) => {
             const isDone    = submittedCats.has(cat.id);
             const isNoAward = noAwardCats.has(cat.id);
             const cardState = isDone ? "done" : isNoAward ? "noaward" : "default";
@@ -754,7 +759,6 @@ export default function JudgingApp() {
               >
                 {isDone    && <span style={S.catBadgeDone}>✓ Done</span>}
                 {isNoAward && <span style={S.catBadgeNoAward}>— No Award</span>}
-                {cat.isEssayCategory && <div style={S.catEssayTag}>Essay / Story</div>}
                 <div style={S.catName}>{cat.name}</div>
                 <div style={S.catCount}>
                   {cat.isEssayCategory
@@ -763,8 +767,57 @@ export default function JudgingApp() {
                 </div>
               </div>
             );
-          })}
-        </div>
+          };
+
+          if (viewingEssayFolder) {
+            const essayDoneCount = essayCats.filter((c) => submittedCats.has(c.id) || noAwardCats.has(c.id)).length;
+            return (
+              <>
+                <div style={S.backNav}>
+                  <button style={S.backBtn}
+                    onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
+                    onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
+                    onClick={() => setViewingEssayFolder(false)}>
+                    ← All Categories
+                  </button>
+                </div>
+                <div style={{ ...S.hero, paddingTop: 16 }}>
+                  <h1 style={S.heroTitle}>Photo Essay</h1>
+                  <p style={S.heroSub}>{essayCats.length} categories · {essayDoneCount} of {essayCats.length} judged</p>
+                </div>
+                <div style={S.catGrid}>
+                  {essayCats.map(renderCatCard)}
+                </div>
+              </>
+            );
+          }
+
+          const essayDoneCount  = essayCats.filter((c) => submittedCats.has(c.id) || noAwardCats.has(c.id)).length;
+          const essayAllDone    = essayCats.length > 0 && essayDoneCount === essayCats.length;
+          const folderCardState = essayAllDone ? "done" : "default";
+          const totalEssaySubmissions = essayCats.reduce((sum, c) => sum + c.entries.length, 0);
+
+          return (
+            <div style={S.catGrid}>
+              {regularCats.map(renderCatCard)}
+              {essayCats.length > 0 && (
+                <div style={S.catCard(folderCardState)}
+                  onClick={() => setViewingEssayFolder(true)}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = essayAllDone ? "#4a7a4a" : "#d4a017"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = essayAllDone ? "#2d4a2d" : "#2a2a2a"; e.currentTarget.style.transform = "translateY(0)"; }}
+                >
+                  {essayAllDone && <span style={S.catBadgeDone}>✓ Done</span>}
+                  <div style={S.catFolderTag}>Folder</div>
+                  <div style={S.catName}>Photo Essay</div>
+                  <div style={S.catCount}>
+                    {essayCats.length} categories · {totalEssaySubmissions} submissions
+                    {essayDoneCount > 0 && !essayAllDone && ` · ${essayDoneCount} judged`}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -846,8 +899,8 @@ export default function JudgingApp() {
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); }}>
-            ← Categories
+            onClick={() => { setPhase("browse"); setSelectedCat(null); setViewingEssayFolder(true); }}>
+            ← Photo Essay
           </button>
         </div>
         <div style={S.judgeWrap}>

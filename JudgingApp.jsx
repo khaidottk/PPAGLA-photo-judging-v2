@@ -82,7 +82,24 @@ function driveThumbUrl(fileId) {
 }
 
 function parseEntriesCSV(csv) {
-  const lines = csv.trim().split("\n");
+  // Split CSV into rows, respecting newlines inside quoted fields
+  const splitCSVRows = (text) => {
+    const rows = []; let cur = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '"') { inQ = !inQ; cur += ch; continue; }
+      if ((ch === '\n' || ch === '\r') && !inQ) {
+        if (ch === '\r' && text[i + 1] === '\n') i++; // skip \r\n
+        if (cur.trim()) rows.push(cur);
+        cur = "";
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur.trim()) rows.push(cur);
+    return rows;
+  };
+  const lines = splitCSVRows(csv.trim());
   const parseLine = (line) => {
     const cols = []; let cur = "", inQ = false;
     for (const ch of line) {

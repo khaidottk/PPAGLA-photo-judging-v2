@@ -1,16 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
 // ============================================================
-// CONFIGURATION — edit these two URLs only
+// CONFIGURATION — set via environment variables (see .env.example)
 // ============================================================
 
-// Credentials sheet (published CSV). Columns: judgeId, password, role
-// role must be "judge" or "admin"
-// File → Share → Publish to web → Sheet → CSV → Publish
-const CREDENTIALS_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSXLD9aghj8OuvHLaIAqf_nKha5gBF8SnwuoRqtn9kkYfyekRRH_Z2-qMUnHijlCIF__56ZcHCxVEZq/pub?output=csv";
-
-// Apps Script URL (receives votes, returns history)
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz41CcyUe-t3xUe6dieFH0jRsaoC0CYrc9FIYhShV_ouIafCO9FGrFJwGUIeAqoYQcc/exec";
+const CREDENTIALS_SHEET_URL = import.meta.env.VITE_CREDENTIALS_SHEET_URL || "";
+const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || "";
 
 // Maps the essay_id PREFIX (before the first "-") to its canonical top-level
 // category name. This ensures essay entries are always grouped correctly under
@@ -241,6 +236,20 @@ function ContestImage({ src, alt, style, onClick }) {
 // MAIN APP
 // ============================================================
 export default function JudgingApp() {
+
+  if (!CREDENTIALS_SHEET_URL || !APPS_SCRIPT_URL) {
+    return (
+      <div style={{ padding: 40, fontFamily: "system-ui", color: "#c00", maxWidth: 600, margin: "80px auto" }}>
+        <h2>Configuration Required</h2>
+        <p>Missing environment variables. Create a <code>.env</code> file from <code>.env.example</code> and set:</p>
+        <ul>
+          {!CREDENTIALS_SHEET_URL && <li><code>VITE_CREDENTIALS_SHEET_URL</code></li>}
+          {!APPS_SCRIPT_URL && <li><code>VITE_APPS_SCRIPT_URL</code></li>}
+        </ul>
+        <p>See <code>.env.example</code> for details. On Vercel, set these in Project Settings → Environment Variables.</p>
+      </div>
+    );
+  }
 
   // ── Core state ──────────────────────────────────────────────
   const [phase, setPhase]           = useState("login"); // login|browse|judge|submitted|admin

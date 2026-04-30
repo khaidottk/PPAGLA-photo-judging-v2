@@ -501,7 +501,8 @@ function Breadcrumb({ phase, selectedCat, viewingEssay, onNavigate }) {
   return (
     <div style={{
       padding: "12px 24px", background: "#0f0f0f", borderBottom: "1px solid #2a2a2a",
-      maxWidth: 880, margin: "0 auto", display: "flex", alignItems: "center", gap: "8px",
+      position: "sticky", top: 52, zIndex: 30,
+      display: "flex", alignItems: "center", gap: "8px",
       fontSize: "13px", color: "#a0a090", letterSpacing: "0.5px"
     }}>
       {parts.map((part, idx) => (
@@ -697,8 +698,16 @@ export default function JudgingApp() {
 
   useEffect(() => {
     const handlePopState = (e) => {
-      if (e.state) {
+      // e.state contains the state we pushed, or null if browser back went before our app
+      if (e.state && typeof e.state === "object") {
         restoreFromHistory(e.state);
+      } else {
+        // If no state, user clicked back before entering our navigation history
+        // Default to browse phase
+        setPhase("browse");
+        setSelectedCat(null);
+        setViewingEssay(null);
+        setLightbox(null);
       }
     };
     window.addEventListener("popstate", handlePopState);
@@ -801,6 +810,14 @@ export default function JudgingApp() {
   useEffect(() => {
     if (phase === "admin" && allJudges.length > 0) loadAdminProgress(allJudges);
   }, [phase, allJudges, loadAdminProgress]);
+
+  // Initialize history state when entering browse phase
+  useEffect(() => {
+    if (phase === "browse") {
+      // Replace the current history entry with browse state (don't create new entry)
+      window.history.replaceState({ phase: "browse", selectedCat: null, viewingEssay: null }, "", window.location.href);
+    }
+  }, [phase]);
 
   // ── Voting logic ────────────────────────────────────────────
   // hmCount and isVoteBtnDisabled are computed inside VoteRow (which receives `votes`)

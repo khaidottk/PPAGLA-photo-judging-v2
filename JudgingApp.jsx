@@ -193,7 +193,14 @@ function parseEntriesCSV(csv) {
 // ============================================================
 const HM = 4;
 const MAX_HMS = 4;
-const PLACE_LABELS  = { 1: "1st Place", 2: "2nd Place", 3: "3rd Place", 4: "HM" };
+const PLACE_LABELS  = { 1: "1st", 2: "2nd", 3: "3rd", 4: "HM" };
+const PLACE_ICONS   = { 1: "🥇", 2: "🥈", 3: "🥉", 4: "⭐" };
+const PLACE_TOOLTIPS = {
+  1: "Award 1st Place to your top pick",
+  2: "Award 2nd Place to your second choice",
+  3: "Award 3rd Place to your third choice",
+  4: "Honorable Mention — up to 4 allowed per category",
+};
 const PLACE_COLORS  = {
   1: { bg: "#d4a017", text: "#1a1a1a", border: "#b8860b" },
   2: { bg: "#a8a8a8", text: "#1a1a1a", border: "#8a8a8a" },
@@ -288,15 +295,21 @@ const S = {
   entryCaption: { fontSize: "16px", color: "#d0ccc7", lineHeight: 1.65 },
   voteRow:  { display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" },
   voteBtn:  (place, active, disabled) => ({
-    flex: "1 1 70px", padding: "10px 6px",
-    border: `1px solid ${active ? PLACE_COLORS[place].border : "#3a3a3a"}`,
+    flex: "1 1 75px", padding: "12px 8px",
+    border: `2px solid ${active ? PLACE_COLORS[place].border : "#3a3a3a"}`,
     borderRadius: 5, background: active ? PLACE_COLORS[place].bg : "transparent",
     color: active ? PLACE_COLORS[place].text : disabled ? "#3a3530" : "#b0ada8",
-    fontSize: "13px", letterSpacing: "0.8px", textTransform: "uppercase",
-    fontFamily: "'Georgia', serif", fontWeight: active ? 700 : 400,
+    fontSize: "14px", letterSpacing: "0.5px", textTransform: "uppercase",
+    fontFamily: "'Georgia', serif", fontWeight: active ? 700 : 500,
     cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.4 : 1, transition: "all 0.16s",
+    opacity: disabled ? 0.4 : 1, transition: "all 0.16s", position: "relative",
   }),
+  voteBtnIcon: { fontSize: "16px", marginRight: "4px" },
+  tooltip: {
+    position: "absolute", bottom: "-35px", left: "50%", transform: "translateX(-50%)",
+    background: "#1a1a1a", border: "1px solid #3a3a3a", borderRadius: 4, padding: "6px 10px",
+    fontSize: "12px", color: "#d0ccc7", whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none",
+  },
 
   // Essay folder grid
   essayGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 16 },
@@ -398,9 +411,56 @@ function Lightbox({ lightbox, onClose }) {
   );
 }
 
+function VoteTooltip({ place, show }) {
+  if (!show) return null;
+  return <div style={S.tooltip}>{PLACE_TOOLTIPS[place]}</div>;
+}
+
+function WelcomeTutorial({ onDismiss }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 150,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "24px"
+    }}>
+      <div style={{
+        background: "#181614", border: "1px solid #2a2a2a", borderRadius: 12, padding: "40px",
+        maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.8)"
+      }}>
+        <div style={{ fontSize: "32px", marginBottom: 16 }}>✨</div>
+        <h2 style={{ fontSize: "24px", fontWeight: 400, color: "#e8e4df", marginBottom: 12 }}>How to Vote</h2>
+        <div style={{ fontSize: "15px", color: "#b0ada8", lineHeight: 1.8, marginBottom: 28 }}>
+          <p style={{ marginBottom: 16 }}>
+            <strong>Award placements</strong> to the strongest entries. All placements are optional — award only what deserves it.
+          </p>
+          <div style={{ background: "#1a1816", padding: "14px 16px", borderRadius: 6, marginBottom: 16 }}>
+            <div style={{ fontSize: "14px", color: "#d4a017", marginBottom: 10, fontWeight: 600 }}>Placement Buttons:</div>
+            <div style={{ fontSize: "13px", color: "#a8a4a0", lineHeight: 1.7 }}>
+              <div>🥇 <strong>1st Place</strong> — Your top pick (one per category)</div>
+              <div>🥈 <strong>2nd Place</strong> — Your second choice</div>
+              <div>🥉 <strong>3rd Place</strong> — Your third choice</div>
+              <div>⭐ <strong>Honorable Mention</strong> — Recognition for up to 4 additional entries</div>
+            </div>
+          </div>
+          <p>
+            <strong>💬 Add a comment</strong> when you award 1st Place to explain why that entry stood out to you.
+          </p>
+        </div>
+        <button style={{
+          width: "100%", padding: "12px", background: "#d4a017", border: "none", borderRadius: 5,
+          color: "#1a1a1a", fontSize: "14px", fontWeight: 700, letterSpacing: "1.5px", textTransform: "uppercase",
+          fontFamily: "'Georgia', serif", cursor: "pointer"
+        }} onClick={onDismiss}>
+          Got it, let's judge
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // votes: {entryId: place} — passed from JudgingApp state
 // onToggleVote: (entryId, place) => void
 function VoteRow({ entryId, votes, onToggleVote }) {
+  const [hoveredPlace, setHoveredPlace] = useState(null);
   const hmCount  = () => Object.values(votes).filter((p) => p === HM).length;
   const isActive = (place) => votes[entryId] === place;
   const isDisabled = (place) => {
@@ -414,13 +474,20 @@ function VoteRow({ entryId, votes, onToggleVote }) {
         const active   = isActive(place);
         const disabled = !active && isDisabled(place);
         const label    = place === HM
-          ? (active ? "HM ✓" : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${MAX_HMS})` : ""}`)
+          ? (active ? `HM ✓` : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${MAX_HMS})` : ""}`)
           : PLACE_LABELS[place];
+        const icon = PLACE_ICONS[place];
         return (
-          <button key={place} style={S.voteBtn(place, active, disabled)}
-            disabled={disabled} onClick={() => onToggleVote(entryId, place)}>
-            {label}
-          </button>
+          <div key={place} style={{ flex: "1 1 75px", position: "relative" }}>
+            <button style={S.voteBtn(place, active, disabled)}
+              disabled={disabled}
+              onClick={() => onToggleVote(entryId, place)}
+              onMouseEnter={() => setHoveredPlace(place)}
+              onMouseLeave={() => setHoveredPlace(null)}>
+              <span style={S.voteBtnIcon}>{icon}</span>{label}
+            </button>
+            <VoteTooltip place={place} show={hoveredPlace === place && !active && !disabled} />
+          </div>
         );
       })}
     </div>
@@ -454,28 +521,30 @@ function ColumnSlider({ columnCount, onColumnChange }) {
 
 function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward }) {
   const statusParts = [
-    assigned[1] ? "1st ✓" : "1st —",
-    assigned[2] ? "2nd ✓" : "2nd —",
-    assigned[3] ? "3rd ✓" : "3rd —",
-    `HM: ${assigned.hm}/${MAX_HMS}`,
+    assigned[1] ? "🥇 1st" : "1st —",
+    assigned[2] ? "🥈 2nd" : "2nd —",
+    assigned[3] ? "🥉 3rd" : "3rd —",
+    `⭐ HM: ${assigned.hm}/${MAX_HMS}`,
   ];
   return (
     <div style={S.submitBar}>
       <div style={S.submitInner}>
         <div>
           <div style={S.submitStatus}>{statusParts.join("  ·  ")}</div>
-          <div style={S.submitHint}>All placements optional · up to {MAX_HMS} HMs</div>
-          {commentRequired && <div style={S.submitWarn}>Add a comment for your 1st place pick ↑</div>}
+          <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
+          {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
         </div>
         <div style={S.submitBtns}>
           <button style={S.skipBtn}
+            title="Skip this category without awarding any placements"
             onMouseEnter={(e) => { e.target.style.borderColor="#7a7570"; e.target.style.color="#c0bdb8"; }}
             onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#9a9590"; }}
             onClick={onNoAward}>
             No Award
           </button>
           <button style={canSubmit ? S.submitOn : S.submitOff}
-            disabled={!canSubmit} onClick={onSubmit}>
+            disabled={!canSubmit} onClick={onSubmit}
+            title={commentRequired ? "Add a comment for 1st place to continue" : "Submit your placements for this category"}>
             {submitLoading ? "Submitting…" : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
           </button>
         </div>
@@ -530,6 +599,7 @@ export default function JudgingApp() {
   const [judgeHistory, setJudgeHistory]   = useState(null);
   const [viewingEssayFolder, setViewingEssayFolder] = useState(false);
   const [columnCount, setColumnCount]     = useState(3);     // 1-5 columns
+  const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
 
   // ── Admin state ─────────────────────────────────────────────
   const [adminProgress, setAdminProgress] = useState({});   // {judgeId: [catName…]}
@@ -667,6 +737,9 @@ export default function JudgingApp() {
       });
       setVotes(prev); setFPComment(comment);
     } else { setVotes({}); }
+    if (!hasSeenTutorial) {
+      setHasSeenTutorial(true);
+    }
     setPhase("judge");
   };
 
@@ -824,7 +897,7 @@ export default function JudgingApp() {
         <Header right={`Judging as: ${judgeId}`} />
         <div style={S.hero}>
           <h1 style={S.heroTitle}>Select a Category</h1>
-          <p style={S.heroSub}>All placements are optional. Award only what the work deserves.</p>
+          <p style={S.heroSub}>Review each category and award 1st, 2nd, 3rd Place, or Honorable Mentions. All placements are optional — award only what deserves recognition.</p>
         </div>
         {(() => {
           const essayCats   = categories.filter((c) => ESSAY_FOLDER_NAMES.has(c.name));
@@ -910,12 +983,14 @@ export default function JudgingApp() {
   // PHASE: JUDGE
   // ============================================================
   if (phase === "judge" && selectedCat) {
+    const showTutorial = !hasSeenTutorial && !viewingEssay;
 
     // ── Essay: detail view (photos + vote for THIS essay) ──────
     if (selectedCat.isEssayCategory && viewingEssay) {
       const essayPlace = getEntryPlace(viewingEssay.id);
       return (
         <div style={S.app}><div style={S.grain} />
+          {!hasSeenTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
           <Header right={`Judging as: ${judgeId}`} />
           <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
           <div style={S.backNav}>
@@ -981,6 +1056,7 @@ export default function JudgingApp() {
     // ── Essay: submission list ──────────────────────────────────
     if (selectedCat.isEssayCategory) return (
       <div style={S.app}><div style={S.grain} />
+        {showTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
         <Header right={`Judging as: ${judgeId}`} />
         <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
@@ -994,7 +1070,7 @@ export default function JudgingApp() {
         <div key={`essay-list-${selectedCat.id}`} style={S.judgeWrap}>
           <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
-            {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a submission to view all its photos and vote
+            {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a thumbnail to view all photos in the series
           </div>
           <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
           <div style={{ ...S.essayGrid, gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
@@ -1045,6 +1121,7 @@ export default function JudgingApp() {
     // ── Single-image judging ────────────────────────────────────
     return (
       <div style={S.app}><div style={S.grain} />
+        {showTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
         <Header right={`Judging as: ${judgeId}`} />
         <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
@@ -1058,7 +1135,7 @@ export default function JudgingApp() {
         <div key={`single-${selectedCat.id}`} style={S.judgeWrap}>
           <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
-            {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge · All placements optional · Up to {MAX_HMS} HMs
+            {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge for better detail
           </div>
           <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${columnCount}, 1fr)`, gap: 16, marginBottom: 40 }}>

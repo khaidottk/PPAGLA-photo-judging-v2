@@ -233,6 +233,231 @@ function ContestImage({ src, alt, style, onClick }) {
 }
 
 // ============================================================
+// STYLES — module-level constant; none depend on React state.
+// Defined here (not inside JudgingApp) so the object is created
+// once rather than on every render.
+// ============================================================
+const S = {
+  app:    { minHeight: "100vh", background: "#0f0f0f", color: "#e8e4df", fontFamily: "'Georgia', serif", position: "relative" },
+  grain:  { position: "fixed", inset: 0, opacity: 0.035, pointerEvents: "none", zIndex: 100,
+             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` },
+  header: { borderBottom: "1px solid #2a2a2a", padding: "18px 24px", display: "flex", alignItems: "center",
+             justifyContent: "space-between", position: "sticky", top: 0, background: "#0f0f0f", zIndex: 50 },
+  hLeft:  { display: "flex", alignItems: "center", gap: "12px" },
+  logo:   { height: "28px", width: "auto", opacity: 0.9 },
+  hTitle: { fontSize: "14px", letterSpacing: "2px", textTransform: "uppercase", color: "#a0a090" },
+  hRight: { fontSize: "14px", color: "#a0a090", letterSpacing: "0.5px" },
+  hero:   { padding: "56px 24px 40px", maxWidth: 880, margin: "0 auto", textAlign: "center" },
+  heroTitle: { fontSize: "clamp(28px,4vw,42px)", fontWeight: 400, letterSpacing: "-0.5px", lineHeight: 1.2, color: "#e8e4df", marginBottom: 10 },
+  heroSub:   { fontSize: "17px", color: "#a8a4a0", lineHeight: 1.7, maxWidth: 480, margin: "0 auto" },
+  loginBox: { maxWidth: 400, margin: "28px auto 0", background: "#181614", border: "1px solid #2a2a2a", borderRadius: 8, padding: "32px 28px" },
+  label:   { display: "block", fontSize: "13px", letterSpacing: "1.5px", textTransform: "uppercase", color: "#a0a090", marginBottom: 7, marginTop: 20 },
+  input:   { width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 5, padding: "11px 14px", color: "#e8e4df", fontSize: "16px", fontFamily: "'Georgia', serif", outline: "none", boxSizing: "border-box" },
+  textarea:{ width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 5, padding: "11px 14px", color: "#e8e4df", fontSize: "15px", fontFamily: "'Georgia', serif", outline: "none", boxSizing: "border-box", minHeight: "90px", resize: "vertical" },
+  loginErr:{ color: "#e06060", fontSize: "14px", marginTop: 12, fontStyle: "italic" },
+  btn:     { display: "block", width: "100%", marginTop: 24, padding: "13px", background: "#d4a017", border: "none", borderRadius: 5, color: "#1a1a1a", fontSize: "14px", letterSpacing: "2px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "pointer" },
+  btnMuted:{ display: "block", width: "100%", marginTop: 10, padding: "11px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#9a9590", fontSize: "13px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer" },
+
+  // Category grid
+  catGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12, maxWidth: 880, margin: "0 auto", padding: "0 24px" },
+  catCard: (state) => ({
+    background: state === "done" ? "#1a2518" : state === "noaward" ? "#1a1a1a" : "#181614",
+    border: `1px solid ${state === "done" ? "#2d4a2d" : state === "noaward" ? "#2a2a2a" : "#2a2a2a"}`,
+    borderRadius: 8, padding: "24px 20px", cursor: "pointer", transition: "all 0.2s", position: "relative",
+  }),
+  catName:     { fontSize: "17px", fontWeight: 400, color: "#e8e4df", marginBottom: 4 },
+  catCount:    { fontSize: "14px", color: "#a0a090", letterSpacing: "0.3px" },
+  catEssayTag: { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
+  catBadgeDone:    { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#7acc7a", letterSpacing: "0.5px" },
+  catBadgeNoAward: { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#9a9590", letterSpacing: "0.5px" },
+  catFolderTag:    { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
+
+  // Navigation
+  backNav: { padding: "24px 24px 0", maxWidth: 880, margin: "0 auto" },
+  backBtn: { background: "none", border: "none", color: "#a0a090", fontSize: "16px", letterSpacing: "0.5px", cursor: "pointer", fontFamily: "'Georgia', serif", padding: 0, transition: "color 0.2s" },
+  judgeWrap: { maxWidth: 880, margin: "0 auto", padding: "18px 24px 200px" },
+  catTitle:  { fontSize: "clamp(22px,3.5vw,34px)", fontWeight: 400, color: "#e8e4df", marginBottom: 4 },
+  catMeta:   { fontSize: "15px", color: "#a0a090", letterSpacing: "0.3px", marginBottom: 30 },
+
+  // Single-image cards
+  card:    (p) => ({ background: "#181614", border: `1px solid ${p ? PLACE_COLORS[p].border : "#2a2a2a"}`, borderRadius: 8, overflow: "hidden", marginBottom: 16, transition: "border-color 0.2s" }),
+  imgWrap: { width: "100%", aspectRatio: "3/2", background: "#141210", position: "relative", cursor: "zoom-in", overflow: "hidden" },
+  badge:   (p) => ({ position: "absolute", top: 10, left: 10, zIndex: 2, background: PLACE_COLORS[p].bg, color: PLACE_COLORS[p].text, fontSize: "12px", fontWeight: 700, letterSpacing: "1px", padding: "4px 10px", borderRadius: 3 }),
+  entryInfo:    { padding: "16px 20px 18px" },
+  entryHeadline:{ fontSize: "17px", fontWeight: 400, color: "#e8e4df", marginBottom: 6 },
+  entryCaption: { fontSize: "16px", color: "#d0ccc7", lineHeight: 1.65 },
+  voteRow:  { display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" },
+  voteBtn:  (place, active, disabled) => ({
+    flex: "1 1 70px", padding: "10px 6px",
+    border: `1px solid ${active ? PLACE_COLORS[place].border : "#3a3a3a"}`,
+    borderRadius: 5, background: active ? PLACE_COLORS[place].bg : "transparent",
+    color: active ? PLACE_COLORS[place].text : disabled ? "#3a3530" : "#b0ada8",
+    fontSize: "13px", letterSpacing: "0.8px", textTransform: "uppercase",
+    fontFamily: "'Georgia', serif", fontWeight: active ? 700 : 400,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.4 : 1, transition: "all 0.16s",
+  }),
+
+  // Essay folder grid
+  essayGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 16 },
+  folderCard:  (p) => ({ background: "#181614", border: `1px solid ${p ? PLACE_COLORS[p].border : "#2a2a2a"}`, borderRadius: 8, overflow: "hidden", transition: "border-color 0.2s" }),
+  folderThumb: { width: "100%", aspectRatio: "4/3", position: "relative", overflow: "hidden", cursor: "pointer" },
+  folderOverlay:{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%,transparent 55%)", zIndex: 1, display: "flex", alignItems: "flex-end", padding: "12px 14px" },
+  folderCount: { fontSize: "13px", color: "#e8e4df", background: "rgba(0,0,0,0.55)", padding: "3px 10px", borderRadius: 10 },
+  folderInfo:  { padding: "14px 16px 16px" },
+  folderTitle: { fontSize: "16px", fontWeight: 400, color: "#e8e4df", marginBottom: 12, lineHeight: 1.3 },
+  viewBtn:     { background: "none", border: "1px solid #3a3a3a", borderRadius: 4, color: "#a0a090", fontSize: "14px", letterSpacing: "0.5px", padding: "7px 13px", cursor: "pointer", fontFamily: "'Georgia', serif", transition: "all 0.18s", display: "block", marginBottom: 12 },
+
+  // Essay detail
+  essayDetailTitle: { fontSize: "clamp(20px,2.8vw,28px)", fontWeight: 400, color: "#e8e4df", marginBottom: 6 },
+  essayDetailMeta:  { fontSize: "15px", color: "#a0a090", marginBottom: 30 },
+  essayPhotoGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))", gap: 14, marginBottom: 40 },
+  essayPhotoCard:   { background: "#181614", border: "1px solid #2a2a2a", borderRadius: 6, overflow: "hidden" },
+  essayPhotoImg:    { width: "100%", aspectRatio: "3/2", position: "relative", cursor: "zoom-in", overflow: "hidden" },
+  essayPhotoInfo:   { padding: "12px 14px 14px" },
+  essayPhotoNum:    { fontSize: "12px", letterSpacing: "1px", textTransform: "uppercase", color: "#a0a090", marginBottom: 5 },
+  essayPhotoCap:    { fontSize: "15px", color: "#d0ccc7", lineHeight: 1.55 },
+
+  // Essay detail voting panel
+  essayVotePanel: { background: "#1a1816", border: "1px solid #3a3a3a", borderRadius: 8, padding: "20px 22px", marginBottom: 24 },
+  essayVoteTitle: { fontSize: "15px", color: "#a0a090", marginBottom: 12, letterSpacing: "0.5px" },
+
+  // Comment box
+  commentBox:   { marginTop: 24, padding: "18px", background: "#1a1816", border: "1px solid #2d4a2d", borderRadius: 6 },
+  commentLabel: { fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", color: "#8aca8a", marginBottom: 10, display: "block" },
+
+  // Submit bar
+  submitBar:   { position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(15,15,15,0.97)", backdropFilter: "blur(12px)", borderTop: "1px solid #2a2a2a", padding: "16px 24px", zIndex: 40 },
+  submitInner: { maxWidth: 880, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" },
+  submitStatus:{ fontSize: "15px", color: "#b0ada8", letterSpacing: "0.3px", lineHeight: 1.7 },
+  submitHint:  { fontSize: "13px", color: "#8a8580", letterSpacing: "0.3px" },
+  submitWarn:  { fontSize: "13px", color: "#e06060", fontStyle: "italic" },
+  submitBtns:  { display: "flex", gap: 12, alignItems: "center", flexShrink: 0 },
+  skipBtn:     { padding: "10px 18px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#9a9590", fontSize: "13px", letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer", transition: "all 0.18s" },
+  submitOn:    { padding: "12px 28px", background: "#d4a017", border: "none", borderRadius: 5, color: "#1a1a1a", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
+  submitOff:   { padding: "12px 28px", background: "#1e1c18", border: "1px solid #2a2a2a", borderRadius: 5, color: "#5a5550", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "not-allowed", whiteSpace: "nowrap" },
+
+  // Success
+  successIcon:  { fontSize: "44px", display: "block", marginBottom: 18 },
+  successTitle: { fontSize: "26px", fontWeight: 400, color: "#e8e4df", marginBottom: 8 },
+  successSub:   { fontSize: "17px", color: "#a8a4a0", lineHeight: 1.7, maxWidth: 460, margin: "0 auto" },
+  smallBtn:     { display: "inline-block", marginTop: 24, padding: "10px 24px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#aea8a4", fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer", transition: "all 0.2s" },
+  center:       { textAlign: "center", padding: "80px 24px", color: "#a0a090", fontSize: "17px" },
+
+  // Lightbox
+  lbOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" },
+  lbImg:     { maxWidth: "90vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 3 },
+  lbCaption: { marginTop: 16, fontSize: "16px", color: "#d0ccc7", maxWidth: 680, textAlign: "center", lineHeight: 1.6 },
+  lbClose:   { position: "absolute", top: 20, right: 26, background: "none", border: "none", color: "#a0a090", fontSize: "28px", cursor: "pointer", lineHeight: 1, zIndex: 1 },
+
+  // Admin panel
+  adminGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px,1fr))", gap: 10, maxWidth: 880, margin: "0 auto", padding: "0 24px 60px" },
+  adminCard:   { background: "#181614", border: "1px solid #2a2a2a", borderRadius: 8, padding: "18px" },
+  adminName:   { fontSize: "15px", color: "#e8e4df", marginBottom: 10, letterSpacing: "0.5px" },
+  adminCatRow: { fontSize: "13px", color: "#8a8580", lineHeight: 2 },
+  adminDone:   { color: "#7acc7a" },
+  adminPending:{ color: "#7a7570" },
+};
+
+// ============================================================
+// SHARED UI COMPONENTS — defined at module scope so their
+// reference is stable across JudgingApp re-renders. Defining
+// them inside JudgingApp creates a new function reference each
+// render; React then sees a new component type and unmounts/
+// remounts them on every render, causing reconciliation glitches
+// and unnecessary DOM churn with their siblings.
+// ============================================================
+
+function Header({ right }) {
+  return (
+    <header style={S.header}>
+      <div style={S.hLeft}>
+        <img src="/1PPAGLA Logo White.png" alt="PPAGLA" style={S.logo} />
+        <span style={S.hTitle}>PPAGLA Photo Contest</span>
+      </div>
+      {right && <span style={S.hRight}>{right}</span>}
+    </header>
+  );
+}
+
+function Lightbox({ lightbox, onClose }) {
+  if (!lightbox) return null;
+  return (
+    <div style={S.lbOverlay} onClick={onClose}>
+      <button style={S.lbClose} onClick={onClose}>✕</button>
+      <img src={lightbox.imageUrl} alt={lightbox.caption || ""} style={S.lbImg}
+        onClick={(e) => e.stopPropagation()} />
+      {lightbox.caption && <p style={S.lbCaption}>{lightbox.caption}</p>}
+    </div>
+  );
+}
+
+// votes: {entryId: place} — passed from JudgingApp state
+// onToggleVote: (entryId, place) => void
+function VoteRow({ entryId, votes, onToggleVote }) {
+  const hmCount  = () => Object.values(votes).filter((p) => p === HM).length;
+  const isActive = (place) => votes[entryId] === place;
+  const isDisabled = (place) => {
+    if (isActive(place)) return false;
+    if (place === HM) return hmCount() >= MAX_HMS;
+    return false;
+  };
+  return (
+    <div style={S.voteRow}>
+      {[1, 2, 3, HM].map((place) => {
+        const active   = isActive(place);
+        const disabled = !active && isDisabled(place);
+        const label    = place === HM
+          ? (active ? "HM ✓" : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${MAX_HMS})` : ""}`)
+          : PLACE_LABELS[place];
+        return (
+          <button key={place} style={S.voteBtn(place, active, disabled)}
+            disabled={disabled} onClick={() => onToggleVote(entryId, place)}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// assigned: { 1: bool|null, 2: bool|null, 3: bool|null, hm: number }
+// placesAssigned: total number of vote assignments
+// onSubmit: () => void — triggers handleSubmit(false)
+// onNoAward: () => void — triggers handleSubmit(true) after confirm
+function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward }) {
+  const statusParts = [
+    assigned[1] ? "1st ✓" : "1st —",
+    assigned[2] ? "2nd ✓" : "2nd —",
+    assigned[3] ? "3rd ✓" : "3rd —",
+    `HM: ${assigned.hm}/${MAX_HMS}`,
+  ];
+  return (
+    <div style={S.submitBar}>
+      <div style={S.submitInner}>
+        <div>
+          <div style={S.submitStatus}>{statusParts.join("  ·  ")}</div>
+          <div style={S.submitHint}>All placements optional · up to {MAX_HMS} HMs</div>
+          {commentRequired && <div style={S.submitWarn}>Add a comment for your 1st place pick ↑</div>}
+        </div>
+        <div style={S.submitBtns}>
+          <button style={S.skipBtn}
+            onMouseEnter={(e) => { e.target.style.borderColor="#7a7570"; e.target.style.color="#c0bdb8"; }}
+            onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#9a9590"; }}
+            onClick={onNoAward}>
+            No Award
+          </button>
+          <button style={canSubmit ? S.submitOn : S.submitOff}
+            disabled={!canSubmit} onClick={onSubmit}>
+            {submitLoading ? "Submitting…" : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // MAIN APP
 // ============================================================
 export default function JudgingApp() {
@@ -380,15 +605,9 @@ export default function JudgingApp() {
   }, [phase, allJudges, loadAdminProgress]);
 
   // ── Voting logic ────────────────────────────────────────────
-  const hmCount       = () => Object.values(votes).filter((p) => p === HM).length;
+  // hmCount and isVoteBtnDisabled are computed inside VoteRow (which receives `votes`)
   const getEntryPlace = (id) => votes[id] || null;
   const firstPlaceId  = () => Object.keys(votes).find((k) => votes[k] === 1) || null;
-
-  const isVoteBtnDisabled = (entryId, place) => {
-    if (votes[entryId] === place) return false;   // always can click to deselect
-    if (place === HM) return hmCount() >= MAX_HMS; // HM: disabled if 4 already assigned
-    return false; // 1st/2nd/3rd: clicking reassigns — never globally disabled
-  };
 
   const toggleVote = (entryId, place) => {
     setVotes((prev) => {
@@ -410,6 +629,7 @@ export default function JudgingApp() {
 
   // ── Category selection ──────────────────────────────────────
   const handleCategorySelect = (cat) => {
+    window.scrollTo(0, 0);
     setSelectedCat(cat); setViewingEssay(null); setLightbox(null); setFPComment("");
     if (judgeHistory?.[cat.name]) {
       const prev = {}; let comment = "";
@@ -470,214 +690,6 @@ export default function JudgingApp() {
   const placesAssigned  = Object.keys(votes).length;
   const assigned        = { 1: null, 2: null, 3: null, hm: 0 };
   Object.values(votes).forEach((p) => { if (p <= 3) assigned[p] = true; if (p === HM) assigned.hm++; });
-
-  // ============================================================
-  // STYLES — tuned for readability (older judges, bright contrast)
-  // ============================================================
-
-// ============================================================
-// STYLES (module-scope, stable across renders)
-// ============================================================
-const S = {
-  app:    { minHeight: "100vh", background: "#0f0f0f", color: "#e8e4df", fontFamily: "'Georgia', serif", position: "relative" },
-  grain:  { position: "fixed", inset: 0, opacity: 0.035, pointerEvents: "none", zIndex: 100,
-             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")` },
-  header: { borderBottom: "1px solid #2a2a2a", padding: "18px 24px", display: "flex", alignItems: "center",
-             justifyContent: "space-between", position: "sticky", top: 0, background: "#0f0f0f", zIndex: 50 },
-  hLeft:  { display: "flex", alignItems: "center", gap: "12px" },
-  logo:   { height: "28px", width: "auto", opacity: 0.9 },
-  hTitle: { fontSize: "14px", letterSpacing: "2px", textTransform: "uppercase", color: "#a0a090" },
-  hRight: { fontSize: "14px", color: "#a0a090", letterSpacing: "0.5px" },
-  hero:   { padding: "56px 24px 40px", maxWidth: 880, margin: "0 auto", textAlign: "center" },
-  heroTitle: { fontSize: "clamp(28px,4vw,42px)", fontWeight: 400, letterSpacing: "-0.5px", lineHeight: 1.2, color: "#e8e4df", marginBottom: 10 },
-  heroSub:   { fontSize: "17px", color: "#a8a4a0", lineHeight: 1.7, maxWidth: 480, margin: "0 auto" },
-  loginBox: { maxWidth: 400, margin: "28px auto 0", background: "#181614", border: "1px solid #2a2a2a", borderRadius: 8, padding: "32px 28px" },
-  label:   { display: "block", fontSize: "13px", letterSpacing: "1.5px", textTransform: "uppercase", color: "#a0a090", marginBottom: 7, marginTop: 20 },
-  input:   { width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 5, padding: "11px 14px", color: "#e8e4df", fontSize: "16px", fontFamily: "'Georgia', serif", outline: "none", boxSizing: "border-box" },
-  textarea:{ width: "100%", background: "#0f0f0f", border: "1px solid #2a2a2a", borderRadius: 5, padding: "11px 14px", color: "#e8e4df", fontSize: "15px", fontFamily: "'Georgia', serif", outline: "none", boxSizing: "border-box", minHeight: "90px", resize: "vertical" },
-  loginErr:{ color: "#e06060", fontSize: "14px", marginTop: 12, fontStyle: "italic" },
-  btn:     { display: "block", width: "100%", marginTop: 24, padding: "13px", background: "#d4a017", border: "none", borderRadius: 5, color: "#1a1a1a", fontSize: "14px", letterSpacing: "2px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "pointer" },
-  btnMuted:{ display: "block", width: "100%", marginTop: 10, padding: "11px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#9a9590", fontSize: "13px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer" },
-
-  // Category grid
-  catGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 12, maxWidth: 880, margin: "0 auto", padding: "0 24px" },
-  catCard: (state) => ({
-    background: state === "done" ? "#1a2518" : state === "noaward" ? "#1a1a1a" : "#181614",
-    border: `1px solid ${state === "done" ? "#2d4a2d" : state === "noaward" ? "#2a2a2a" : "#2a2a2a"}`,
-    borderRadius: 8, padding: "24px 20px", cursor: "pointer", transition: "all 0.2s", position: "relative",
-  }),
-  catName:     { fontSize: "17px", fontWeight: 400, color: "#e8e4df", marginBottom: 4 },
-  catCount:    { fontSize: "14px", color: "#a0a090", letterSpacing: "0.3px" },
-  catEssayTag: { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
-  catBadgeDone:    { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#7acc7a", letterSpacing: "0.5px" },
-  catBadgeNoAward: { position: "absolute", top: 12, right: 14, fontSize: "13px", color: "#9a9590", letterSpacing: "0.5px" },
-  catFolderTag:    { display: "inline-block", fontSize: "11px", letterSpacing: "1px", textTransform: "uppercase", color: "#d4a017", border: "1px solid #3a2a00", borderRadius: 3, padding: "2px 6px", marginBottom: 6 },
-
-  // Navigation
-  backNav: { padding: "24px 24px 0", maxWidth: 880, margin: "0 auto" },
-  backBtn: { background: "none", border: "none", color: "#a0a090", fontSize: "16px", letterSpacing: "0.5px", cursor: "pointer", fontFamily: "'Georgia', serif", padding: 0, transition: "color 0.2s" },
-  judgeWrap: { maxWidth: 880, margin: "0 auto", padding: "18px 24px 200px" },
-  catTitle:  { fontSize: "clamp(22px,3.5vw,34px)", fontWeight: 400, color: "#e8e4df", marginBottom: 4 },
-  catMeta:   { fontSize: "15px", color: "#a0a090", letterSpacing: "0.3px", marginBottom: 30 },
-
-  // Single-image cards
-  card:    (p) => ({ background: "#181614", border: `1px solid ${p ? PLACE_COLORS[p].border : "#2a2a2a"}`, borderRadius: 8, overflow: "hidden", marginBottom: 16, transition: "border-color 0.2s" }),
-  imgWrap: { width: "100%", aspectRatio: "3/2", background: "#141210", position: "relative", cursor: "zoom-in", overflow: "hidden" },
-  badge:   (p) => ({ position: "absolute", top: 10, left: 10, zIndex: 2, background: PLACE_COLORS[p].bg, color: PLACE_COLORS[p].text, fontSize: "12px", fontWeight: 700, letterSpacing: "1px", padding: "4px 10px", borderRadius: 3 }),
-  entryInfo:    { padding: "16px 20px 18px" },
-  entryHeadline:{ fontSize: "17px", fontWeight: 400, color: "#e8e4df", marginBottom: 6 },
-  entryCaption: { fontSize: "16px", color: "#d0ccc7", lineHeight: 1.65 },
-  voteRow:  { display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" },
-  voteBtn:  (place, active, disabled) => ({
-    flex: "1 1 70px", padding: "10px 6px",
-    border: `1px solid ${active ? PLACE_COLORS[place].border : "#3a3a3a"}`,
-    borderRadius: 5, background: active ? PLACE_COLORS[place].bg : "transparent",
-    color: active ? PLACE_COLORS[place].text : disabled ? "#3a3530" : "#b0ada8",
-    fontSize: "13px", letterSpacing: "0.8px", textTransform: "uppercase",
-    fontFamily: "'Georgia', serif", fontWeight: active ? 700 : 400,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.4 : 1, transition: "all 0.16s",
-  }),
-
-  // Essay folder grid
-  essayGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px,1fr))", gap: 16 },
-  folderCard:  (p) => ({ background: "#181614", border: `1px solid ${p ? PLACE_COLORS[p].border : "#2a2a2a"}`, borderRadius: 8, overflow: "hidden", transition: "border-color 0.2s" }),
-  folderThumb: { width: "100%", aspectRatio: "4/3", position: "relative", overflow: "hidden", cursor: "pointer" },
-  folderOverlay:{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.65) 0%,transparent 55%)", zIndex: 1, display: "flex", alignItems: "flex-end", padding: "12px 14px" },
-  folderCount: { fontSize: "13px", color: "#e8e4df", background: "rgba(0,0,0,0.55)", padding: "3px 10px", borderRadius: 10 },
-  folderInfo:  { padding: "14px 16px 16px" },
-  folderTitle: { fontSize: "16px", fontWeight: 400, color: "#e8e4df", marginBottom: 12, lineHeight: 1.3 },
-  viewBtn:     { background: "none", border: "1px solid #3a3a3a", borderRadius: 4, color: "#a0a090", fontSize: "14px", letterSpacing: "0.5px", padding: "7px 13px", cursor: "pointer", fontFamily: "'Georgia', serif", transition: "all 0.18s", display: "block", marginBottom: 12 },
-
-  // Essay detail
-  essayDetailTitle: { fontSize: "clamp(20px,2.8vw,28px)", fontWeight: 400, color: "#e8e4df", marginBottom: 6 },
-  essayDetailMeta:  { fontSize: "15px", color: "#a0a090", marginBottom: 30 },
-  essayPhotoGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))", gap: 14, marginBottom: 40 },
-  essayPhotoCard:   { background: "#181614", border: "1px solid #2a2a2a", borderRadius: 6, overflow: "hidden" },
-  essayPhotoImg:    { width: "100%", aspectRatio: "3/2", position: "relative", cursor: "zoom-in", overflow: "hidden" },
-  essayPhotoInfo:   { padding: "12px 14px 14px" },
-  essayPhotoNum:    { fontSize: "12px", letterSpacing: "1px", textTransform: "uppercase", color: "#a0a090", marginBottom: 5 },
-  essayPhotoCap:    { fontSize: "15px", color: "#d0ccc7", lineHeight: 1.55 },
-
-  // Essay detail voting panel
-  essayVotePanel: { background: "#1a1816", border: "1px solid #3a3a3a", borderRadius: 8, padding: "20px 22px", marginBottom: 24 },
-  essayVoteTitle: { fontSize: "15px", color: "#a0a090", marginBottom: 12, letterSpacing: "0.5px" },
-
-  // Comment box
-  commentBox:   { marginTop: 24, padding: "18px", background: "#1a1816", border: "1px solid #2d4a2d", borderRadius: 6 },
-  commentLabel: { fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", color: "#8aca8a", marginBottom: 10, display: "block" },
-
-  // Submit bar
-  submitBar:   { position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(15,15,15,0.97)", backdropFilter: "blur(12px)", borderTop: "1px solid #2a2a2a", padding: "16px 24px", zIndex: 40 },
-  submitInner: { maxWidth: 880, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" },
-  submitStatus:{ fontSize: "15px", color: "#b0ada8", letterSpacing: "0.3px", lineHeight: 1.7 },
-  submitHint:  { fontSize: "13px", color: "#8a8580", letterSpacing: "0.3px" },
-  submitWarn:  { fontSize: "13px", color: "#e06060", fontStyle: "italic" },
-  submitBtns:  { display: "flex", gap: 12, alignItems: "center", flexShrink: 0 },
-  skipBtn:     { padding: "10px 18px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#9a9590", fontSize: "13px", letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer", transition: "all 0.18s" },
-  submitOn:    { padding: "12px 28px", background: "#d4a017", border: "none", borderRadius: 5, color: "#1a1a1a", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
-  submitOff:   { padding: "12px 28px", background: "#1e1c18", border: "1px solid #2a2a2a", borderRadius: 5, color: "#5a5550", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "not-allowed", whiteSpace: "nowrap" },
-
-  // Success
-  successIcon:  { fontSize: "44px", display: "block", marginBottom: 18 },
-  successTitle: { fontSize: "26px", fontWeight: 400, color: "#e8e4df", marginBottom: 8 },
-  successSub:   { fontSize: "17px", color: "#a8a4a0", lineHeight: 1.7, maxWidth: 460, margin: "0 auto" },
-  smallBtn:     { display: "inline-block", marginTop: 24, padding: "10px 24px", background: "transparent", border: "1px solid #3a3a3a", borderRadius: 5, color: "#aea8a4", fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", fontFamily: "'Georgia', serif", cursor: "pointer", transition: "all 0.2s" },
-  center:       { textAlign: "center", padding: "80px 24px", color: "#a0a090", fontSize: "17px" },
-
-  // Lightbox
-  lbOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.93)", zIndex: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "24px" },
-  lbImg:     { maxWidth: "90vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 3 },
-  lbCaption: { marginTop: 16, fontSize: "16px", color: "#d0ccc7", maxWidth: 680, textAlign: "center", lineHeight: 1.6 },
-  lbClose:   { position: "absolute", top: 20, right: 26, background: "none", border: "none", color: "#a0a090", fontSize: "28px", cursor: "pointer", lineHeight: 1, zIndex: 1 },
-
-  // Admin panel
-  adminGrid:   { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px,1fr))", gap: 10, maxWidth: 880, margin: "0 auto", padding: "0 24px 60px" },
-  adminCard:   { background: "#181614", border: "1px solid #2a2a2a", borderRadius: 8, padding: "18px" },
-  adminName:   { fontSize: "15px", color: "#e8e4df", marginBottom: 10, letterSpacing: "0.5px" },
-  adminCatRow: { fontSize: "13px", color: "#8a8580", lineHeight: 2 },
-  adminDone:   { color: "#7acc7a" },
-  adminPending:{ color: "#7a7570" },
-};
-
-// ============================================================
-// HEADER (module-scope component, stable across renders)
-// ============================================================
-function Header({ right }) {
-  return (
-    <header style={S.header}>
-      <div style={S.hLeft}>
-        <img src="/1PPAGLA Logo White.png" alt="PPAGLA" style={S.logo} />
-        <span style={S.hTitle}>PPAGLA Photo Contest</span>
-      </div>
-      {right && <span style={S.hRight}>{right}</span>}
-    </header>
-  );
-}
-
-
-  // ── Lightbox ────────────────────────────────────────────────
-  const Lightbox = () => lightbox ? (
-    <div style={S.lbOverlay} onClick={() => setLightbox(null)}>
-      <button style={S.lbClose} onClick={() => setLightbox(null)}>✕</button>
-      <img src={lightbox.imageUrl} alt={lightbox.caption || ""} style={S.lbImg}
-        onClick={(e) => e.stopPropagation()} />
-      {lightbox.caption && <p style={S.lbCaption}>{lightbox.caption}</p>}
-    </div>
-  ) : null;
-
-  // ── Vote row (reused by single-image and essay cards) ───────
-  const VoteRow = ({ entryId }) => (
-    <div style={S.voteRow}>
-      {[1, 2, 3, HM].map((place) => {
-        const active    = getEntryPlace(entryId) === place;
-        const disabled  = !active && isVoteBtnDisabled(entryId, place);
-        const label     = place === HM
-          ? (active ? "HM ✓" : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${MAX_HMS})` : ""}`)
-          : PLACE_LABELS[place];
-        return (
-          <button key={place} style={S.voteBtn(place, active, disabled)}
-            disabled={disabled} onClick={() => toggleVote(entryId, place)}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  // ── Submit bar (reused in judge views) ──────────────────────
-  const SubmitBar = () => {
-    const statusParts = [
-      assigned[1] ? "1st ✓" : "1st —",
-      assigned[2] ? "2nd ✓" : "2nd —",
-      assigned[3] ? "3rd ✓" : "3rd —",
-      `HM: ${assigned.hm}/${MAX_HMS}`,
-    ];
-    return (
-      <div style={S.submitBar}>
-        <div style={S.submitInner}>
-          <div>
-            <div style={S.submitStatus}>{statusParts.join("  ·  ")}</div>
-            <div style={S.submitHint}>All placements optional · up to {MAX_HMS} HMs</div>
-            {commentRequired && <div style={S.submitWarn}>Add a comment for your 1st place pick ↑</div>}
-          </div>
-          <div style={S.submitBtns}>
-            <button style={S.skipBtn}
-              onMouseEnter={(e) => { e.target.style.borderColor="#7a7570"; e.target.style.color="#c0bdb8"; }}
-              onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#9a9590"; }}
-              onClick={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
-            >
-              No Award
-            </button>
-            <button style={canSubmit ? S.submitOn : S.submitOff}
-              disabled={!canSubmit} onClick={() => handleSubmit(false)}>
-              {submitLoading ? "Submitting…" : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // ============================================================
   // PHASE: LOGIN
@@ -877,16 +889,16 @@ function Header({ right }) {
       return (
         <div style={S.app}><div style={S.grain} />
           <Header right={`Judging as: ${judgeId}`} />
-          <Lightbox />
+          <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
           <div style={S.backNav}>
             <button style={S.backBtn}
               onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
               onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-              onClick={() => { setViewingEssay(null); setLightbox(null); }}>
+              onClick={() => { setViewingEssay(null); setLightbox(null); window.scrollTo(0, 0); }}>
               ← {CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}
             </button>
           </div>
-          <div style={S.judgeWrap}>
+          <div key={`essay-detail-${viewingEssay.id}`} style={S.judgeWrap}>
             <div style={S.essayDetailTitle}>{viewingEssay.essayTitle}</div>
             <div style={S.essayDetailMeta}>{viewingEssay.imageCount} images · Click any image to enlarge</div>
 
@@ -910,7 +922,7 @@ function Header({ right }) {
             {/* Vote for this essay from within the detail view */}
             <div style={S.essayVotePanel}>
               <div style={S.essayVoteTitle}>Your vote for "{viewingEssay.essayTitle}"</div>
-              <VoteRow entryId={viewingEssay.id} />
+              <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} />
               {essayPlace && (
                 <div style={{ marginTop: 10, fontSize: 14, color: PLACE_COLORS[essayPlace].bg }}>
                   Currently assigned: {PLACE_LABELS[essayPlace]}
@@ -929,7 +941,10 @@ function Header({ right }) {
               </div>
             )}
           </div>
-          <SubmitBar />
+          <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
+          commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
+          onSubmit={() => handleSubmit(false)}
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
         </div>
       );
     }
@@ -938,16 +953,16 @@ function Header({ right }) {
     if (selectedCat.isEssayCategory) return (
       <div style={S.app}><div style={S.grain} />
         <Header right={`Judging as: ${judgeId}`} />
-        <Lightbox />
+        <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); setViewingEssayFolder(true); }}>
+            onClick={() => { setPhase("browse"); setSelectedCat(null); setViewingEssayFolder(true); window.scrollTo(0, 0); }}>
             ← Photo Essay
           </button>
         </div>
-        <div style={S.judgeWrap}>
+        <div key={`essay-list-${selectedCat.id}`} style={S.judgeWrap}>
           <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a submission to view all its photos and vote
@@ -957,7 +972,7 @@ function Header({ right }) {
               const myPlace = getEntryPlace(essay.id);
               return (
                 <div key={essay.id} style={S.folderCard(myPlace)}>
-                  <div style={S.folderThumb} onClick={() => setViewingEssay(essay)}>
+                  <div style={S.folderThumb} onClick={() => { setViewingEssay(essay); window.scrollTo(0, 0); }}>
                     <ContestImage src={essay.coverUrl} alt={essay.essayTitle}
                       style={{ width: "100%", height: "100%" }} />
                     <div style={S.folderOverlay}>
@@ -970,10 +985,10 @@ function Header({ right }) {
                     <button style={S.viewBtn}
                       onMouseEnter={(e) => { e.target.style.borderColor="#d4a017"; e.target.style.color="#d4a017"; }}
                       onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#a0a090"; }}
-                      onClick={() => setViewingEssay(essay)}>
+                      onClick={() => { setViewingEssay(essay); window.scrollTo(0, 0); }}>
                       View {essay.imageCount} photos →
                     </button>
-                    <VoteRow entryId={essay.id} />
+                    <VoteRow entryId={essay.id} votes={votes} onToggleVote={toggleVote} />
                   </div>
                 </div>
               );
@@ -990,7 +1005,10 @@ function Header({ right }) {
             </div>
           )}
         </div>
-        <SubmitBar />
+        <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
+          commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
+          onSubmit={() => handleSubmit(false)}
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
       </div>
     );
 
@@ -998,16 +1016,16 @@ function Header({ right }) {
     return (
       <div style={S.app}><div style={S.grain} />
         <Header right={`Judging as: ${judgeId}`} />
-        <Lightbox />
+        <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); }}>
+            onClick={() => { setPhase("browse"); setSelectedCat(null); window.scrollTo(0, 0); }}>
             ← Categories
           </button>
         </div>
-        <div style={S.judgeWrap}>
+        <div key={`single-${selectedCat.id}`} style={S.judgeWrap}>
           <h1 style={S.catTitle}>{CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}</h1>
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge · All placements optional · Up to {MAX_HMS} HMs
@@ -1028,7 +1046,7 @@ function Header({ right }) {
                 <div style={S.entryInfo}>
                   {entry.headline && <div style={S.entryHeadline}>{entry.headline}</div>}
                   {entry.caption  && <div style={S.entryCaption}>{entry.caption}</div>}
-                  <VoteRow entryId={entry.id} />
+                  <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} />
                 </div>
               </div>
             );
@@ -1042,7 +1060,10 @@ function Header({ right }) {
             </div>
           )}
         </div>
-        <SubmitBar />
+        <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
+          commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
+          onSubmit={() => handleSubmit(false)}
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
       </div>
     );
   }

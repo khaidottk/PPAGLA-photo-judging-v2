@@ -26,6 +26,24 @@ const CATEGORY_DISPLAY_NAMES = {
   "GenNews": "General News",
 };
 
+// Category descriptions from contest rules
+const CATEGORY_DESCRIPTIONS = {
+  "general_news": "An organized event known in advance where a photographer has time to plan coverage. Examples: demonstrations, political events, press conferences, spelling bees, award ceremonies, etc.",
+  "spot_news": "An unscheduled or breaking event with little time to plan and where quick reactions are critical. Examples: accidents, crime scenes. Note: fire images may be entered only in the Fire category.",
+  "fire": "An image of a scene with fire. Because of the increasing number of fires involving people, land and structures, this category was created to bring awareness to scenes involving fire and those working with it.",
+  "sports_action": "A photograph capturing peak action and/or the competitive nature of a sports event.",
+  "sports_feature": "A sports-related photograph of a non-peak action moment. Successful Sports Features are storytelling and include cause and effect in a single image. Examples: jubilation/defeat behind the scenes, and others. But even subtle details, often overlooked, can sometimes be powerful storytelling images.",
+  "portrait": "A portrait is more than a mug shot. Great portraits engage us, inviting us to look deeply into a person's eyes or study their body language. Timing, compelling lighting, composition, gesture and expression can work together to reveal something of the subject's character or personality. A great portrait reveals a glimpse of an inner spirit through an outward expression.",
+  "feature": "Great feature pictures are storytelling moments. The feature picture is an un-posed image that tells a story in one frame. Good feature pictures usually trigger an immediate response from the viewer, be it laughter, anger, or other emotions. A 'found' or spontaneous, candid moment, often humorous or paradoxical, the Feature Picture is a mini-story told in one frame.",
+  "pictorial": "A scenic image that emphasizes graphics and expresses beauty, tension and other abstract concepts through composition and tonal and color relationships more than through human interaction. A photograph that celebrates aesthetics over storytelling.",
+  "picture_story": "Once a hallmark of newspapers and magazines, the Picture Story is an endangered species. First and foremost, a Picture Story is a story told through photographs and captions. A good story should be more than a random group of pictures shot at the same event. Like sentences in a paragraph, each photograph in a Picture Story should advance the story, adding something valuable to the whole. The operative word is 'narrative.' 6–12 images required.",
+  "photo_essay": "Usually more complex with more layers than a narrative picture story, a photo essay is a selection of photographs assembled in a coherent manner to communicate the essence of an issue or topic. An essay often includes a variety of voices and perspectives—several narrative stories blended in harmony to explain or address complex issues such as homelessness, land erosion, water, immigration, racism, education, and others. 6–12 images required.",
+  "entertainment": "All forms of entertainment, including performing arts, concerts, and other entertainment. It may also be behind the scenes.",
+  "photo_essay_alt": "Photo Essay (alternate category grouping)",
+  "picture_story_alt": "Picture Story (alternate category grouping)",
+  "poy": "Photographer of the Year portfolio.",
+};
+
 // ============================================================
 // CREDENTIALS PARSER
 // Expects columns: judgeId, password, role
@@ -376,6 +394,12 @@ const S = {
   adminCatRow: { fontSize: "13px", color: "#8a8580", lineHeight: 2 },
   adminDone:   { color: "#7acc7a" },
   adminPending:{ color: "#7a7570" },
+
+  // Category info
+  catInfoBtn:  { background: "none", border: "none", color: "#a0a090", fontSize: "14px", cursor: "pointer", padding: "4px 8px", marginLeft: "6px", transition: "color 0.2s", display: "inline-flex", alignItems: "center", justifyContent: "center" },
+  catInfoPanel:{ marginTop: 20, padding: "16px 18px", background: "#1a1816", border: "1px solid #2a2a2a", borderRadius: 6, fontSize: "14px", color: "#d0ccc7", lineHeight: 1.6 },
+  helpPanel:   { marginBottom: 24, padding: "16px 18px", background: "#1a1816", border: "1px solid #2d4a2d", borderRadius: 6, fontSize: "14px", color: "#d0ccc7", lineHeight: 1.6 },
+  helpTitle:   { fontSize: "13px", color: "#8aca8a", letterSpacing: "0.5px", marginBottom: 8, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 },
 };
 
 // ============================================================
@@ -600,6 +624,7 @@ export default function JudgingApp() {
   const [viewingEssayFolder, setViewingEssayFolder] = useState(false);
   const [columnCount, setColumnCount]     = useState(3);     // 1-5 columns
   const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
+  const [expandedCatInfo, setExpandedCatInfo] = useState(null); // which category's info is expanded in browse
 
   // ── Admin state ─────────────────────────────────────────────
   const [adminProgress, setAdminProgress] = useState({});   // {judgeId: [catName…]}
@@ -908,20 +933,40 @@ export default function JudgingApp() {
             const isNoAward = noAwardCats.has(cat.id);
             const cardState = isDone ? "done" : isNoAward ? "noaward" : "default";
             const displayName = CATEGORY_DISPLAY_NAMES[cat.name] || cat.name;
+            const isExpanded = expandedCatInfo === cat.id;
+            const description = CATEGORY_DESCRIPTIONS[cat.id];
             return (
-              <div key={cat.id} style={S.catCard(cardState)}
-                onClick={() => handleCategorySelect(cat)}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = isDone ? "#4a7a4a" : "#d4a017"; e.currentTarget.style.transform = "translateY(-2px)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDone ? "#2d4a2d" : "#2a2a2a"; e.currentTarget.style.transform = "translateY(0)"; }}
-              >
-                {isDone    && <span style={S.catBadgeDone}>✓ Done</span>}
-                {isNoAward && <span style={S.catBadgeNoAward}>— No Award</span>}
-                <div style={S.catName}>{displayName}</div>
-                <div style={S.catCount}>
-                  {cat.isEssayCategory
-                    ? `${cat.entries.length} ${cat.entries.length === 1 ? "submission" : "submissions"}`
-                    : `${cat.entries.length} ${cat.entries.length === 1 ? "photo" : "photos"}`}
+              <div key={cat.id}>
+                <div style={S.catCard(cardState)}
+                  onClick={() => handleCategorySelect(cat)}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = isDone ? "#4a7a4a" : "#d4a017"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDone ? "#2d4a2d" : "#2a2a2a"; e.currentTarget.style.transform = "translateY(0)"; }}
+                >
+                  {isDone    && <span style={S.catBadgeDone}>✓ Done</span>}
+                  {isNoAward && <span style={S.catBadgeNoAward}>— No Award</span>}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div>
+                      <div style={S.catName}>{displayName}</div>
+                      <div style={S.catCount}>
+                        {cat.isEssayCategory
+                          ? `${cat.entries.length} ${cat.entries.length === 1 ? "submission" : "submissions"}`
+                          : `${cat.entries.length} ${cat.entries.length === 1 ? "photo" : "photos"}`}
+                      </div>
+                    </div>
+                    {description && (
+                      <button style={S.catInfoBtn}
+                        onClick={(e) => { e.stopPropagation(); setExpandedCatInfo(isExpanded ? null : cat.id); }}
+                        onMouseEnter={(e) => { e.target.style.color = "#d4a017"; }}
+                        onMouseLeave={(e) => { e.target.style.color = "#a0a090"; }}
+                        title="View category description">
+                        ℹ
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {isExpanded && description && (
+                  <div style={S.catInfoPanel}>{description}</div>
+                )}
               </div>
             );
           };
@@ -1004,6 +1049,14 @@ export default function JudgingApp() {
           <div key={`essay-detail-${viewingEssay.id}`} style={S.judgeWrap}>
             <div style={S.essayDetailTitle}>{viewingEssay.essayTitle}</div>
             <div style={S.essayDetailMeta}>{viewingEssay.imageCount} images · Click any image to enlarge</div>
+            {CATEGORY_DESCRIPTIONS[selectedCat.id] && (
+              <div style={S.helpPanel}>
+                <div style={S.helpTitle}>
+                  <span>📋</span> Category Guidelines
+                </div>
+                {CATEGORY_DESCRIPTIONS[selectedCat.id]}
+              </div>
+            )}
             <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
 
             <div style={{ ...S.essayPhotoGrid, gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
@@ -1072,6 +1125,14 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a thumbnail to view all photos in the series
           </div>
+          {CATEGORY_DESCRIPTIONS[selectedCat.id] && (
+            <div style={S.helpPanel}>
+              <div style={S.helpTitle}>
+                <span>📋</span> Category Guidelines
+              </div>
+              {CATEGORY_DESCRIPTIONS[selectedCat.id]}
+            </div>
+          )}
           <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
           <div style={{ ...S.essayGrid, gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
             {selectedCat.entries.map((essay) => {
@@ -1137,6 +1198,14 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge for better detail
           </div>
+          {CATEGORY_DESCRIPTIONS[selectedCat.id] && (
+            <div style={S.helpPanel}>
+              <div style={S.helpTitle}>
+                <span>📋</span> Category Guidelines
+              </div>
+              {CATEGORY_DESCRIPTIONS[selectedCat.id]}
+            </div>
+          )}
           <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
           <div style={{ display: "grid", gridTemplateColumns: `repeat(${columnCount}, 1fr)`, gap: 16, marginBottom: 40 }}>
             {selectedCat.entries.map((entry) => {

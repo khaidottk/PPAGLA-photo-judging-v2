@@ -457,6 +457,52 @@ function WelcomeTutorial({ onDismiss }) {
   );
 }
 
+function Breadcrumb({ phase, selectedCat, viewingEssay, onNavigate }) {
+  if (phase !== "judge" && phase !== "browse") return null;
+
+  const parts = [];
+  if (phase === "browse" || phase === "judge") {
+    parts.push({ label: "Categories", onClick: () => onNavigate({ phase: "browse", selectedCat: null, viewingEssay: null }) });
+  }
+
+  if (phase === "judge" && selectedCat) {
+    const catName = CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name;
+    parts.push({ label: catName, onClick: () => onNavigate({ phase: "judge", selectedCat, viewingEssay: null }) });
+  }
+
+  if (phase === "judge" && selectedCat?.isEssayCategory && viewingEssay) {
+    parts.push({ label: viewingEssay.essayTitle });
+  }
+
+  return (
+    <div style={{
+      padding: "12px 24px", background: "#0f0f0f", borderBottom: "1px solid #2a2a2a",
+      maxWidth: 880, margin: "0 auto", display: "flex", alignItems: "center", gap: "8px",
+      fontSize: "13px", color: "#a0a090", letterSpacing: "0.5px"
+    }}>
+      {parts.map((part, idx) => (
+        <div key={idx} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {idx > 0 && <span style={{ color: "#5a5550" }}>›</span>}
+          {part.onClick ? (
+            <button style={{
+              background: "none", border: "none", color: "#a0a090", cursor: "pointer",
+              fontSize: "13px", fontFamily: "'Georgia', serif", padding: 0,
+              transition: "color 0.2s"
+            }}
+            onMouseEnter={(e) => e.target.style.color = "#d4a017"}
+            onMouseLeave={(e) => e.target.style.color = "#a0a090"}
+            onClick={part.onClick}>
+              {part.label}
+            </button>
+          ) : (
+            <span style={{ color: "#d0ccc7" }}>{part.label}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // votes: {entryId: place} — passed from JudgingApp state
 // onToggleVote: (entryId, place) => void
 function VoteRow({ entryId, votes, onToggleVote }) {
@@ -605,6 +651,35 @@ export default function JudgingApp() {
   const [adminProgress, setAdminProgress] = useState({});   // {judgeId: [catName…]}
   const [adminLoading, setAdminLoading]   = useState(false);
 
+  // ── History API: handle browser back button ──────────────────
+  const pushHistoryState = useCallback((state) => {
+    window.history.pushState(state, "", window.location.href);
+  }, []);
+
+  const restoreFromHistory = useCallback((historyState) => {
+    if (historyState?.phase === "browse") {
+      setPhase("browse");
+      setSelectedCat(null);
+      setViewingEssay(null);
+      setLightbox(null);
+    } else if (historyState?.phase === "judge" && historyState?.selectedCat) {
+      setSelectedCat(historyState.selectedCat);
+      setViewingEssay(historyState.viewingEssay || null);
+      setPhase("judge");
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (e) => {
+      if (e.state) {
+        restoreFromHistory(e.state);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [restoreFromHistory]);
+
   // Escape key closes lightbox
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape") setLightbox(null); };
@@ -740,7 +815,32 @@ export default function JudgingApp() {
     if (!hasSeenTutorial) {
       setHasSeenTutorial(true);
     }
+    pushHistoryState({ phase: "judge", selectedCat: cat, viewingEssay: null });
     setPhase("judge");
+  };
+
+  // ── Essay viewing ──────────────────────────────────────────
+  const handleViewEssay = (essay) => {
+    setViewingEssay(essay);
+    pushHistoryState({ phase: "judge", selectedCat, viewingEssay: essay });
+    window.scrollTo(0, 0);
+  };
+
+  const handleBackToBrowse = () => {
+    setPhase("browse");
+    setSelectedCat(null);
+    window.scrollTo(0, 0);
+  };
+
+  const handleBreadcrumbNavigate = ({ phase: newPhase, selectedCat: newCat, viewingEssay: newEssay }) => {
+    if (newPhase === "browse") {
+      handleBackToBrowse();
+    } else if (newPhase === "judge" && newCat) {
+      setSelectedCat(newCat);
+      setViewingEssay(newEssay || null);
+      pushHistoryState({ phase: "judge", selectedCat: newCat, viewingEssay: newEssay || null });
+      window.scrollTo(0, 0);
+    }
   };
 
   // ── Submit ──────────────────────────────────────────────────
@@ -895,6 +995,7 @@ export default function JudgingApp() {
     return (
       <div style={S.app}><div style={S.grain} />
         <Header right={`Judging as: ${judgeId}`} />
+        <Breadcrumb phase="browse" selectedCat={null} viewingEssay={null} onNavigate={handleBreadcrumbNavigate} />
         <div style={S.hero}>
           <h1 style={S.heroTitle}>Select a Category</h1>
           <p style={S.heroSub}>Review each category and award 1st, 2nd, 3rd Place, or Honorable Mentions. All placements are optional — award only what deserves recognition.</p>
@@ -992,12 +1093,13 @@ export default function JudgingApp() {
         <div style={S.app}><div style={S.grain} />
           {!hasSeenTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
           <Header right={`Judging as: ${judgeId}`} />
+          <Breadcrumb phase="judge" selectedCat={selectedCat} viewingEssay={viewingEssay} onNavigate={handleBreadcrumbNavigate} />
           <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
           <div style={S.backNav}>
             <button style={S.backBtn}
               onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
               onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-              onClick={() => { setViewingEssay(null); setLightbox(null); window.scrollTo(0, 0); }}>
+              onClick={() => { setViewingEssay(null); setLightbox(null); pushHistoryState({ phase: "judge", selectedCat, viewingEssay: null }); window.scrollTo(0, 0); }}>
               ← {CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name}
             </button>
           </div>
@@ -1058,12 +1160,13 @@ export default function JudgingApp() {
       <div style={S.app}><div style={S.grain} />
         {showTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
         <Header right={`Judging as: ${judgeId}`} />
+        <Breadcrumb phase="judge" selectedCat={selectedCat} viewingEssay={null} onNavigate={handleBreadcrumbNavigate} />
         <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); setViewingEssayFolder(true); window.scrollTo(0, 0); }}>
+            onClick={() => { handleBreadcrumbNavigate({ phase: "browse", selectedCat: null, viewingEssay: null }); setViewingEssayFolder(true); }}>
             ← Photo Essay
           </button>
         </div>
@@ -1078,7 +1181,7 @@ export default function JudgingApp() {
               const myPlace = getEntryPlace(essay.id);
               return (
                 <div key={essay.id} style={S.folderCard(myPlace)}>
-                  <div style={S.folderThumb} onClick={() => { setViewingEssay(essay); window.scrollTo(0, 0); }}>
+                  <div style={S.folderThumb} onClick={() => handleViewEssay(essay)}>
                     <ContestImage src={essay.coverUrl} alt={essay.essayTitle}
                       style={{ width: "100%", height: "100%" }} />
                     <div style={S.folderOverlay}>
@@ -1091,7 +1194,7 @@ export default function JudgingApp() {
                     <button style={S.viewBtn}
                       onMouseEnter={(e) => { e.target.style.borderColor="#d4a017"; e.target.style.color="#d4a017"; }}
                       onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#a0a090"; }}
-                      onClick={() => { setViewingEssay(essay); window.scrollTo(0, 0); }}>
+                      onClick={() => handleViewEssay(essay)}>
                       View {essay.imageCount} photos →
                     </button>
                     <VoteRow entryId={essay.id} votes={votes} onToggleVote={toggleVote} />
@@ -1123,12 +1226,13 @@ export default function JudgingApp() {
       <div style={S.app}><div style={S.grain} />
         {showTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
         <Header right={`Judging as: ${judgeId}`} />
+        <Breadcrumb phase="judge" selectedCat={selectedCat} viewingEssay={null} onNavigate={handleBreadcrumbNavigate} />
         <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
         <div style={S.backNav}>
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); window.scrollTo(0, 0); }}>
+            onClick={() => handleBreadcrumbNavigate({ phase: "browse", selectedCat: null, viewingEssay: null })}>
             ← Categories
           </button>
         </div>

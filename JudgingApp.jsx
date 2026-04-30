@@ -337,6 +337,12 @@ const S = {
   submitOn:    { padding: "12px 28px", background: "#d4a017", border: "none", borderRadius: 5, color: "#1a1a1a", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
   submitOff:   { padding: "12px 28px", background: "#1e1c18", border: "1px solid #2a2a2a", borderRadius: 5, color: "#5a5550", fontSize: "14px", letterSpacing: "1.5px", textTransform: "uppercase", fontFamily: "'Georgia', serif", fontWeight: 700, cursor: "not-allowed", whiteSpace: "nowrap" },
 
+  // Column slider
+  columnSlider: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20, padding: "14px 16px", background: "#1a1816", border: "1px solid #2a2a2a", borderRadius: 6 },
+  sliderLabel: { fontSize: "13px", color: "#a0a090", letterSpacing: "0.5px", minWidth: 80 },
+  sliderInput: { flex: "0 0 120px", height: "6px", WebkitAppearance: "none", appearance: "none", borderRadius: "3px", outline: "none", cursor: "pointer" },
+  sliderValue: { fontSize: "14px", color: "#d4a017", fontWeight: 700, minWidth: 30 },
+
   // Success
   successIcon:  { fontSize: "44px", display: "block", marginBottom: 18 },
   successTitle: { fontSize: "26px", fontWeight: 400, color: "#e8e4df", marginBottom: 8 },
@@ -425,6 +431,27 @@ function VoteRow({ entryId, votes, onToggleVote }) {
 // placesAssigned: total number of vote assignments
 // onSubmit: () => void — triggers handleSubmit(false)
 // onNoAward: () => void — triggers handleSubmit(true) after confirm
+function ColumnSlider({ columnCount, onColumnChange }) {
+  const fillPercent = columnCount * 20;
+  return (
+    <div style={S.columnSlider}>
+      <span style={S.sliderLabel}>Columns:</span>
+      <input
+        type="range"
+        min="1"
+        max="5"
+        value={columnCount}
+        onChange={(e) => onColumnChange(parseInt(e.target.value, 10))}
+        style={{
+          ...S.sliderInput,
+          background: `linear-gradient(to right, #d4a017 0%, #d4a017 ${fillPercent}%, #3a3a3a ${fillPercent}%, #3a3a3a 100%)`,
+        }}
+      />
+      <span style={S.sliderValue}>{columnCount}</span>
+    </div>
+  );
+}
+
 function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward }) {
   const statusParts = [
     assigned[1] ? "1st ✓" : "1st —",
@@ -502,6 +529,7 @@ export default function JudgingApp() {
   const [noAwardCats, setNoAwardCats]     = useState(new Set()); // submitted with 0 votes
   const [judgeHistory, setJudgeHistory]   = useState(null);
   const [viewingEssayFolder, setViewingEssayFolder] = useState(false);
+  const [columnCount, setColumnCount]     = useState(3);     // 1-5 columns
 
   // ── Admin state ─────────────────────────────────────────────
   const [adminProgress, setAdminProgress] = useState({});   // {judgeId: [catName…]}
@@ -901,8 +929,9 @@ export default function JudgingApp() {
           <div key={`essay-detail-${viewingEssay.id}`} style={S.judgeWrap}>
             <div style={S.essayDetailTitle}>{viewingEssay.essayTitle}</div>
             <div style={S.essayDetailMeta}>{viewingEssay.imageCount} images · Click any image to enlarge</div>
+            <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
 
-            <div style={S.essayPhotoGrid}>
+            <div style={{ ...S.essayPhotoGrid, gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
               {viewingEssay.photos.map((photo) => (
                 <div key={photo.id} style={S.essayPhotoCard}>
                   <div style={S.essayPhotoImg}>
@@ -967,7 +996,8 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a submission to view all its photos and vote
           </div>
-          <div style={S.essayGrid}>
+          <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
+          <div style={{ ...S.essayGrid, gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}>
             {selectedCat.entries.map((essay) => {
               const myPlace = getEntryPlace(essay.id);
               return (
@@ -1030,27 +1060,30 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge · All placements optional · Up to {MAX_HMS} HMs
           </div>
-          {selectedCat.entries.map((entry) => {
-            const myPlace = getEntryPlace(entry.id);
-            return (
-              <div key={entry.id} style={S.card(myPlace)}>
-                <div style={S.imgWrap}
-                  onClick={() => setLightbox({ imageUrl: entry.imageUrl, caption: entry.caption })}>
-                  <ContestImage src={entry.imageUrl} alt={entry.caption || entry.filename}
-                    style={{ width: "100%", height: "100%" }} />
-                  {myPlace && <span style={S.badge(myPlace)}>{PLACE_LABELS[myPlace].toUpperCase()}</span>}
-                  <span style={{ position: "absolute", bottom: 10, right: 12, zIndex: 1, fontSize: "13px", color: "#ddd", background: "rgba(0,0,0,0.6)", padding: "3px 9px", borderRadius: 3, pointerEvents: "none" }}>
-                    Click to enlarge
-                  </span>
+          <ColumnSlider columnCount={columnCount} onColumnChange={setColumnCount} />
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${columnCount}, 1fr)`, gap: 16, marginBottom: 40 }}>
+            {selectedCat.entries.map((entry) => {
+              const myPlace = getEntryPlace(entry.id);
+              return (
+                <div key={entry.id} style={S.card(myPlace)}>
+                  <div style={S.imgWrap}
+                    onClick={() => setLightbox({ imageUrl: entry.imageUrl, caption: entry.caption })}>
+                    <ContestImage src={entry.imageUrl} alt={entry.caption || entry.filename}
+                      style={{ width: "100%", height: "100%" }} />
+                    {myPlace && <span style={S.badge(myPlace)}>{PLACE_LABELS[myPlace].toUpperCase()}</span>}
+                    <span style={{ position: "absolute", bottom: 10, right: 12, zIndex: 1, fontSize: "13px", color: "#ddd", background: "rgba(0,0,0,0.6)", padding: "3px 9px", borderRadius: 3, pointerEvents: "none" }}>
+                      Click to enlarge
+                    </span>
+                  </div>
+                  <div style={S.entryInfo}>
+                    {entry.headline && <div style={S.entryHeadline}>{entry.headline}</div>}
+                    {entry.caption  && <div style={S.entryCaption}>{entry.caption}</div>}
+                    <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} />
+                  </div>
                 </div>
-                <div style={S.entryInfo}>
-                  {entry.headline && <div style={S.entryHeadline}>{entry.headline}</div>}
-                  {entry.caption  && <div style={S.entryCaption}>{entry.caption}</div>}
-                  <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           {fp && selectedCat.entries.find((e) => e.id === fp) && (
             <div style={S.commentBox}>
               <label style={S.commentLabel}>Why does this image deserve 1st Place? *</label>

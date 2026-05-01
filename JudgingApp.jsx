@@ -590,7 +590,7 @@ function ColumnSlider({ columnCount, onColumnChange }) {
   );
 }
 
-function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat, onOpenLightbox }) {
+function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat }) {
   const getWinnerEntry = (place) => {
     if (!votes || !selectedCat?.entries) return null;
     const winnerId = Object.keys(votes).find((k) => votes[k] === place);
@@ -610,6 +610,13 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
     return entry.caption || entry.headline || entry.filename || "";
   };
 
+  const handleThumbnailClick = (entryId) => {
+    const element = document.getElementById(`entry-${entryId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
   return (
     <div style={S.submitBar}>
       <div style={S.submitInner}>
@@ -618,7 +625,6 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
             {[1, 2, 3].map((place) => {
               const entry = getWinnerEntry(place);
               const thumbUrl = getThumbnailUrl(entry);
-              const placeIcon = PLACE_ICONS[place];
               return (
                 <div key={place} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                   <div style={{ fontSize: "12px", color: "#a0a090", letterSpacing: "0.5px" }}>{PLACE_LABELS[place]}</div>
@@ -626,7 +632,7 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
                     <img
                       src={thumbUrl}
                       alt={getCaption(entry)}
-                      onClick={() => onOpenLightbox?.({ imageUrl: thumbUrl, caption: getCaption(entry) })}
+                      onClick={() => handleThumbnailClick(entry.id)}
                       style={{
                         width: "56px",
                         height: "42px",
@@ -639,6 +645,7 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
                       }}
                       onMouseEnter={(e) => (e.target.style.opacity = "1")}
                       onMouseLeave={(e) => (e.target.style.opacity = "0.9")}
+                      title={`Click to scroll to ${getCaption(entry)}`}
                     />
                   ) : (
                     <div style={{
@@ -1253,7 +1260,7 @@ export default function JudgingApp() {
             </div>
 
             {/* Vote for this essay from within the detail view */}
-            <div style={S.essayVotePanel}>
+            <div id={`entry-${viewingEssay.id}`} style={S.essayVotePanel}>
               <div style={S.essayVoteTitle}>Your vote for "{viewingEssay.essayTitle}"</div>
               <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} />
               {essayPlace && (
@@ -1278,7 +1285,7 @@ export default function JudgingApp() {
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
           onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
-          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
+          votes={votes} selectedCat={selectedCat}  />
         </div>
       );
     }
@@ -1316,7 +1323,7 @@ export default function JudgingApp() {
             {selectedCat.entries.map((essay) => {
               const myPlace = getEntryPlace(essay.id);
               return (
-                <div key={essay.id} style={S.folderCard(myPlace)}>
+                <div key={essay.id} id={`entry-${essay.id}`} style={S.folderCard(myPlace)}>
                   <div style={S.folderThumb} onClick={() => handleViewEssay(essay)}>
                     <ContestImage src={essay.coverUrl} alt={essay.essayTitle}
                       style={{ width: "100%", height: "100%" }} />
@@ -1354,7 +1361,7 @@ export default function JudgingApp() {
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
           onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
-          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
+          votes={votes} selectedCat={selectedCat}  />
       </div>
     );
 
@@ -1391,7 +1398,7 @@ export default function JudgingApp() {
             {selectedCat.entries.map((entry) => {
               const myPlace = getEntryPlace(entry.id);
               return (
-                <div key={entry.id} style={S.card(myPlace)}>
+                <div key={entry.id} id={`entry-${entry.id}`} style={S.card(myPlace)}>
                   <div style={S.imgWrap}
                     onClick={() => setLightbox({ imageUrl: entry.imageUrl, caption: entry.caption })}>
                     <ContestImage src={entry.imageUrl} alt={entry.caption || entry.filename}
@@ -1423,7 +1430,7 @@ export default function JudgingApp() {
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
           onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
-          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
+          votes={votes} selectedCat={selectedCat}  />
       </div>
     );
   }

@@ -590,18 +590,82 @@ function ColumnSlider({ columnCount, onColumnChange }) {
   );
 }
 
-function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward }) {
-  const statusParts = [
-    assigned[1] ? "🥇 1st" : "1st —",
-    assigned[2] ? "🥈 2nd" : "2nd —",
-    assigned[3] ? "🥉 3rd" : "3rd —",
-    `⭐ HM: ${assigned.hm}/${MAX_HMS}`,
-  ];
+function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat }) {
+  const getWinnerEntry = (place) => {
+    if (!votes || !selectedCat?.entries) return null;
+    const winnerId = Object.keys(votes).find((k) => votes[k] === place);
+    if (!winnerId) return null;
+    return selectedCat.entries.find((e) => e.id === winnerId);
+  };
+
+  const getThumbnailUrl = (entry) => {
+    if (!entry) return "";
+    if (selectedCat?.isEssayCategory) return entry.coverUrl || "";
+    return entry.imageUrl || "";
+  };
+
+  const getCaption = (entry) => {
+    if (!entry) return "";
+    if (selectedCat?.isEssayCategory) return entry.essayTitle;
+    return entry.caption || entry.headline || entry.filename || "";
+  };
+
+  const handleThumbnailClick = (entryId) => {
+    const element = document.getElementById(`entry-${entryId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
   return (
     <div style={S.submitBar}>
       <div style={S.submitInner}>
         <div>
-          <div style={S.submitStatus}>{statusParts.join("  ·  ")}</div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
+            {[1, 2, 3].map((place) => {
+              const entry = getWinnerEntry(place);
+              const thumbUrl = getThumbnailUrl(entry);
+              return (
+                <div key={place} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ fontSize: "12px", color: "#a0a090", letterSpacing: "0.5px" }}>{PLACE_LABELS[place]}</div>
+                  {thumbUrl ? (
+                    <img
+                      src={thumbUrl}
+                      alt={getCaption(entry)}
+                      onClick={() => handleThumbnailClick(entry.id)}
+                      style={{
+                        width: "56px",
+                        height: "42px",
+                        objectFit: "cover",
+                        borderRadius: 4,
+                        border: `2px solid ${PLACE_COLORS[place].border}`,
+                        cursor: "pointer",
+                        transition: "opacity 0.2s",
+                        opacity: 0.9,
+                      }}
+                      onMouseEnter={(e) => (e.target.style.opacity = "1")}
+                      onMouseLeave={(e) => (e.target.style.opacity = "0.9")}
+                      title={`Click to scroll to ${getCaption(entry)}`}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "56px",
+                      height: "42px",
+                      borderRadius: 4,
+                      border: `2px solid #3a3a3a`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                    }}>
+                      —
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{MAX_HMS}</div>
           <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
           {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
         </div>
@@ -1196,7 +1260,7 @@ export default function JudgingApp() {
             </div>
 
             {/* Vote for this essay from within the detail view */}
-            <div style={S.essayVotePanel}>
+            <div id={`entry-${viewingEssay.id}`} style={S.essayVotePanel}>
               <div style={S.essayVoteTitle}>Your vote for "{viewingEssay.essayTitle}"</div>
               <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} />
               {essayPlace && (
@@ -1220,7 +1284,8 @@ export default function JudgingApp() {
           <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat}  />
         </div>
       );
     }
@@ -1258,7 +1323,7 @@ export default function JudgingApp() {
             {selectedCat.entries.map((essay) => {
               const myPlace = getEntryPlace(essay.id);
               return (
-                <div key={essay.id} style={S.folderCard(myPlace)}>
+                <div key={essay.id} id={`entry-${essay.id}`} style={S.folderCard(myPlace)}>
                   <div style={S.folderThumb} onClick={() => handleViewEssay(essay)}>
                     <ContestImage src={essay.coverUrl} alt={essay.essayTitle}
                       style={{ width: "100%", height: "100%" }} />
@@ -1295,7 +1360,8 @@ export default function JudgingApp() {
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat}  />
       </div>
     );
 
@@ -1332,7 +1398,7 @@ export default function JudgingApp() {
             {selectedCat.entries.map((entry) => {
               const myPlace = getEntryPlace(entry.id);
               return (
-                <div key={entry.id} style={S.card(myPlace)}>
+                <div key={entry.id} id={`entry-${entry.id}`} style={S.card(myPlace)}>
                   <div style={S.imgWrap}
                     onClick={() => setLightbox({ imageUrl: entry.imageUrl, caption: entry.caption })}>
                     <ContestImage src={entry.imageUrl} alt={entry.caption || entry.filename}
@@ -1363,7 +1429,8 @@ export default function JudgingApp() {
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat}  />
       </div>
     );
   }

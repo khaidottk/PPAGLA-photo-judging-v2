@@ -590,18 +590,75 @@ function ColumnSlider({ columnCount, onColumnChange }) {
   );
 }
 
-function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward }) {
-  const statusParts = [
-    assigned[1] ? "🥇 1st" : "1st —",
-    assigned[2] ? "🥈 2nd" : "2nd —",
-    assigned[3] ? "🥉 3rd" : "3rd —",
-    `⭐ HM: ${assigned.hm}/${MAX_HMS}`,
-  ];
+function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat, onOpenLightbox }) {
+  const getWinnerEntry = (place) => {
+    if (!votes || !selectedCat?.entries) return null;
+    const winnerId = Object.keys(votes).find((k) => votes[k] === place);
+    if (!winnerId) return null;
+    return selectedCat.entries.find((e) => e.id === winnerId);
+  };
+
+  const getThumbnailUrl = (entry) => {
+    if (!entry) return "";
+    if (selectedCat?.isEssayCategory) return entry.coverUrl || "";
+    return entry.imageUrl || "";
+  };
+
+  const getCaption = (entry) => {
+    if (!entry) return "";
+    if (selectedCat?.isEssayCategory) return entry.essayTitle;
+    return entry.caption || entry.headline || entry.filename || "";
+  };
+
   return (
     <div style={S.submitBar}>
       <div style={S.submitInner}>
         <div>
-          <div style={S.submitStatus}>{statusParts.join("  ·  ")}</div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
+            {[1, 2, 3].map((place) => {
+              const entry = getWinnerEntry(place);
+              const thumbUrl = getThumbnailUrl(entry);
+              const placeIcon = PLACE_ICONS[place];
+              return (
+                <div key={place} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ fontSize: "12px", color: "#a0a090", letterSpacing: "0.5px" }}>{PLACE_LABELS[place]}</div>
+                  {thumbUrl ? (
+                    <img
+                      src={thumbUrl}
+                      alt={getCaption(entry)}
+                      onClick={() => onOpenLightbox?.({ imageUrl: thumbUrl, caption: getCaption(entry) })}
+                      style={{
+                        width: "56px",
+                        height: "42px",
+                        objectFit: "cover",
+                        borderRadius: 4,
+                        border: `2px solid ${PLACE_COLORS[place].border}`,
+                        cursor: "pointer",
+                        transition: "opacity 0.2s",
+                        opacity: 0.9,
+                      }}
+                      onMouseEnter={(e) => (e.target.style.opacity = "1")}
+                      onMouseLeave={(e) => (e.target.style.opacity = "0.9")}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "56px",
+                      height: "42px",
+                      borderRadius: 4,
+                      border: `2px solid #3a3a3a`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "20px",
+                    }}>
+                      —
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{MAX_HMS}</div>
           <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
           {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
         </div>
@@ -1220,7 +1277,8 @@ export default function JudgingApp() {
           <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
         </div>
       );
     }
@@ -1295,7 +1353,8 @@ export default function JudgingApp() {
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
       </div>
     );
 
@@ -1363,7 +1422,8 @@ export default function JudgingApp() {
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
           onSubmit={() => handleSubmit(false)}
-          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }} />
+          onNoAward={() => { if (window.confirm("Submit with no awards for this category?")) handleSubmit(true); }}
+          votes={votes} selectedCat={selectedCat} onOpenLightbox={setLightbox} />
       </div>
     );
   }

@@ -834,6 +834,7 @@ export default function JudgingApp() {
 
   // ── Runoff (round 2) ────────────────────────────────────────
   const [runoffGroups, setRunoffGroups] = useState(null); // null = not loaded yet
+  const [runoffError, setRunoffError]   = useState("");   // why the config is empty
 
   // ── Judging state ───────────────────────────────────────────
   const [selectedCat, setSelectedCat]     = useState(null);
@@ -932,14 +933,34 @@ export default function JudgingApp() {
   // Read through Apps Script rather than a published CSV so a freshly
   // opened runoff is visible immediately (published CSVs cache for minutes).
   const loadRunoffConfig = useCallback(async () => {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.startsWith("YOUR_")) { setRunoffGroups([]); return; }
+    setRunoffError("");
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.startsWith("YOUR_")) {
+      setRunoffGroups([]);
+      setRunoffError("The site has no Apps Script URL configured (VITE_APPS_SCRIPT_URL).");
+      return;
+    }
     try {
       const res  = await fetch(`${APPS_SCRIPT_URL}?action=runoff`);
       const data = await res.json();
-      setRunoffGroups(data.status === "success" && data.open ? (data.groups || []) : []);
+
+      if (data.status !== "success") {
+        // The most common cause by far: the Apps Script was edited but a new
+        // web app VERSION was never deployed, so the URL still serves an old
+        // doGet that knows nothing about ?action=runoff. Saying so beats a
+        // blank "no tiebreakers" screen.
+        setRunoffGroups([]);
+        setRunoffError(
+          `The scoring script answered "${data.message || "error"}". It is probably ` +
+          `running an older deployed version — in the Apps Script editor go to ` +
+          `Deploy → Manage deployments → New version.`
+        );
+        return;
+      }
+      setRunoffGroups(data.groups || []);
     } catch (e) {
       console.error("Runoff config load failed:", e);
       setRunoffGroups([]);
+      setRunoffError("Could not reach the scoring script to load the tiebreakers.");
     }
   }, []);
 
@@ -1256,18 +1277,48 @@ export default function JudgingApp() {
     );
     // ── Round 2: tiebreakers only ─────────────────────────────
     if (IS_RUNOFF) {
-      if (runoffCategories.length === 0) return (
-        <div style={S.app}><div style={S.grain} />
-          <Header right={`Judging as: ${judgeId}`} />
-          <div style={{ ...S.hero, paddingTop: 90, textAlign: "center" }}>
-            <h1 style={S.heroTitle}>No Tiebreakers Open</h1>
-            <p style={S.heroSub}>
-              There are no tiebreakers to vote on right now. You'll get a link
-              if a second round is needed.
-            </p>
+      if (runoffCategories.length === 0) {
+        // Three different things land here, and telling them apart is the
+        // difference between a five-minute fix and a blind hunt:
+        //   1. the script errored (stale deployment) — runoffError is set
+        //   2. it answered cleanly with nothing open — the normal case
+        //   3. it named groups, but none matched a category in the entries
+        //      sheet, so every group was dropped
+        const unmatched = (runoffGroups || [])
+          .map((g) => g.category)
+          .filter((name) => !categories.some((c) => c.name === name));
+
+        return (
+          <div style={S.app}><div style={S.grain} />
+            <Header right={`Judging as: ${judgeId}`} />
+            <div style={{ ...S.hero, paddingTop: 90, textAlign: "center" }}>
+              <h1 style={S.heroTitle}>No Tiebreakers Open</h1>
+              <p style={S.heroSub}>
+                There are no tiebreakers to vote on right now. You'll get a link
+                if a second round is needed.
+              </p>
+            </div>
+            {(runoffError || unmatched.length > 0) && (
+              <div style={{ maxWidth: 700, margin: "0 auto", padding: "0 24px 60px" }}>
+                <div style={S.catInfoPanel}>
+                  <strong style={{ color: "#e8e4df" }}>For the organizer</strong>
+                  <div style={{ marginTop: 8 }}>
+                    {runoffError || (
+                      <>
+                        The runoff lists {unmatched.length === 1 ? "a category" : "categories"} that
+                        {" "}{unmatched.length === 1 ? "does" : "do"} not match anything in the entries
+                        sheet, so {unmatched.length === 1 ? "it was" : "they were"} skipped:{" "}
+                        <strong style={{ color: "#e8e4df" }}>{unmatched.join(", ")}</strong>.
+                        {" "}Check the Category column on the Runoff tab against the entries sheet.
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      );
+        );
+      }
 
       const doneCount = runoffCategories.filter(
         (c) => submittedCats.has(c.id) || noAwardCats.has(c.id)).length;

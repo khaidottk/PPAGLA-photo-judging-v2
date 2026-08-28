@@ -7,6 +7,27 @@ import { useState, useCallback, useEffect, useRef } from "react";
 const CREDENTIALS_SHEET_URL = import.meta.env.VITE_CREDENTIALS_SHEET_URL || "";
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL || "";
 
+// ── Round 2 (runoff) mode ────────────────────────────────────
+// Judges reach the tiebreaker round by adding ?round=2 to the normal
+// site URL. In that mode the app shows ONLY the tied photos — the
+// round 1 categories are never rendered, so a judge cannot reopen
+// and accidentally resubmit a category they already finished.
+const IS_RUNOFF = typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).get("round") === "2";
+
+// Suffix appended to the category name when a runoff vote is saved.
+// This is what keeps round 2 rows from overwriting round 1 in the
+// Votes sheet. NOTE: the dash is an EM DASH — this string must match
+// RUNOFF_SUFFIX in apps-script/Code.gs byte for byte.
+const RUNOFF_SUFFIX = " — Runoff";
+
+// Category name → the id used for progress tracking. The Apps Script
+// returns vote history keyed by category NAME, so both sides have to
+// normalize identically for the "done" badges to line up.
+function catId(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
 // Maps the essay_id PREFIX (before the first "-") to its canonical top-level
 // category name. This ensures essay entries are always grouped correctly under
 // "Photo Essay", "Picture Story" etc. even if the category column in the
@@ -165,11 +186,11 @@ function parseEntriesCSV(csv) {
 
   return Array.from(catRaw.entries()).map(([name, rows]) => {
     const isEssay = rows.some((r) => r.essayId !== "");
-    const catId   = name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    const id      = catId(name);
 
     if (!isEssay) {
       return {
-        id: catId, name, isEssayCategory: false,
+        id, name, isEssayCategory: false,
         entries: rows.map((r) => ({
           id: r.entryId, filename: r.filename, caption: r.caption,
           headline: r.headline, imageUrl: r.imageUrl,
@@ -202,8 +223,57 @@ function parseEntriesCSV(csv) {
       get imageCount() { return this.photos.length; },
     }));
 
-    return { id: catId, name, isEssayCategory: true, entries: essays };
+    return { id, name, isEssayCategory: true, entries: essays };
   });
+}
+
+// ============================================================
+// RUNOFF CATEGORIES
+// Builds the round 2 category list by filtering the already-parsed
+// round 1 categories down to just the tied entries. Reusing those
+// objects means images, captions, Drive thumbnails and essay
+// grouping all come from the same source as round 1 — so an essay
+// category (Picture Story) renders as folders automatically.
+//
+// groups: [{ category, entryIds, contestedPlaces }] from Apps Script
+// ============================================================
+function buildRunoffCategories(categories, groups) {
+  return (groups || []).map((g) => {
+    // Match on the raw category name, which is correct by construction:
+    // votes are POSTed with cat.name, and the group's category string
+    // comes from those same vote rows.
+    const source = categories.find((c) => c.name === g.category);
+    if (!source) return null;
+
+    const wanted  = new Set(g.entryIds || []);
+    const entries = source.entries.filter((e) => wanted.has(e.id));
+    if (entries.length < 2) return null;
+
+    const places = (g.contestedPlaces || []).filter((p) => p >= 1 && p <= 4);
+    if (places.length === 0) return null;
+
+    return {
+      ...source,
+      id:              catId(g.category + RUNOFF_SUFFIX),
+      name:            g.category,
+      isRunoff:        true,
+      contestedPlaces: places,
+      // How many HMs this group may award — a group can occupy more
+      // than one HM slot (e.g. General News contests 3rd, HM, HM).
+      maxHms:          places.filter((p) => p === HM).length,
+      entries,
+    };
+  }).filter(Boolean);
+}
+
+// Human-readable list of the places a runoff decides, e.g. "1st, 2nd, 3rd, HM"
+function contestedLabel(places) {
+  const seen = [];
+  (places || []).forEach((p) => {
+    const label = PLACE_LABELS[p];
+    if (label && seen.indexOf(label) < 0) seen.push(label);
+  });
+  return seen.join(", ");
 }
 
 // ============================================================
@@ -486,7 +556,7 @@ function Breadcrumb({ phase, selectedCat, viewingEssay, onNavigate }) {
 
   const parts = [];
   if (phase === "browse" || phase === "judge") {
-    parts.push({ label: "Categories", onClick: () => onNavigate({ phase: "browse", selectedCat: null, viewingEssay: null }) });
+    parts.push({ label: IS_RUNOFF ? "Tiebreakers" : "Categories", onClick: () => onNavigate({ phase: "browse", selectedCat: null, viewingEssay: null }) });
   }
 
   if (phase === "judge" && selectedCat) {
@@ -530,22 +600,29 @@ function Breadcrumb({ phase, selectedCat, viewingEssay, onNavigate }) {
 
 // votes: {entryId: place} — passed from JudgingApp state
 // onToggleVote: (entryId, place) => void
-function VoteRow({ entryId, votes, onToggleVote }) {
+// allowedPlaces: which buttons to show (a runoff shows only the
+//   places its tie group actually contests). Defaults to all four.
+// maxHms: how many HMs may be awarded. Defaults to the normal 4.
+function VoteRow({ entryId, votes, onToggleVote, allowedPlaces, maxHms }) {
   const [hoveredPlace, setHoveredPlace] = useState(null);
+  const hmLimit  = typeof maxHms === "number" ? maxHms : MAX_HMS;
+  const places   = allowedPlaces && allowedPlaces.length
+    ? [1, 2, 3, HM].filter((p) => allowedPlaces.indexOf(p) >= 0)
+    : [1, 2, 3, HM];
   const hmCount  = () => Object.values(votes).filter((p) => p === HM).length;
   const isActive = (place) => votes[entryId] === place;
   const isDisabled = (place) => {
     if (isActive(place)) return false;
-    if (place === HM) return hmCount() >= MAX_HMS;
+    if (place === HM) return hmCount() >= hmLimit;
     return false;
   };
   return (
     <div style={S.voteRow}>
-      {[1, 2, 3, HM].map((place) => {
+      {places.map((place) => {
         const active   = isActive(place);
         const disabled = !active && isDisabled(place);
         const label    = place === HM
-          ? (active ? `HM ✓` : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${MAX_HMS})` : ""}`)
+          ? (active ? `HM ✓` : `HM${!active && hmCount() > 0 ? ` (${hmCount()}/${hmLimit})` : ""}`)
           : PLACE_LABELS[place];
         const icon = PLACE_ICONS[place];
         return (
@@ -591,6 +668,17 @@ function ColumnSlider({ columnCount, onColumnChange }) {
 }
 
 function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat }) {
+  const isRunoff  = !!selectedCat?.isRunoff;
+  const runoffHms = isRunoff ? (selectedCat.maxHms || 0) : 0;
+  // In a runoff the group has exactly as many slots as photos, so the
+  // thumbnails track the contested places rather than a fixed 1/2/3.
+  const slots = isRunoff
+    ? (selectedCat.contestedPlaces || []).filter((p, i, a) => a.indexOf(p) === i)
+    : [1, 2, 3];
+  const remaining = isRunoff
+    ? (selectedCat.contestedPlaces || []).length - placesAssigned
+    : 0;
+
   const getWinnerEntry = (place) => {
     if (!votes || !selectedCat?.entries) return null;
     const winnerId = Object.keys(votes).find((k) => votes[k] === place);
@@ -622,7 +710,7 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
       <div style={S.submitInner}>
         <div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-            {[1, 2, 3].map((place) => {
+            {slots.map((place) => {
               const entry = getWinnerEntry(place);
               const thumbUrl = getThumbnailUrl(entry);
               return (
@@ -665,22 +753,44 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
               );
             })}
           </div>
-          <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{MAX_HMS}</div>
-          <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
-          {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
+          {isRunoff ? (
+            <>
+              {runoffHms > 0 && <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{runoffHms}</div>}
+              <div style={S.submitHint}>
+                Rank all {selectedCat.entries.length} photos · every place must be assigned
+              </div>
+              {remaining > 0 && (
+                <div style={S.submitWarn}>
+                  {remaining} {remaining === 1 ? "photo" : "photos"} still unplaced
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{MAX_HMS}</div>
+              <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
+              {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
+            </>
+          )}
         </div>
         <div style={S.submitBtns}>
-          <button style={S.skipBtn}
-            title="Skip this category without awarding any placements"
-            onMouseEnter={(e) => { e.target.style.borderColor="#7a7570"; e.target.style.color="#c0bdb8"; }}
-            onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#9a9590"; }}
-            onClick={onNoAward}>
-            No Award
-          </button>
+          {!isRunoff && (
+            <button style={S.skipBtn}
+              title="Skip this category without awarding any placements"
+              onMouseEnter={(e) => { e.target.style.borderColor="#7a7570"; e.target.style.color="#c0bdb8"; }}
+              onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#9a9590"; }}
+              onClick={onNoAward}>
+              No Award
+            </button>
+          )}
           <button style={canSubmit ? S.submitOn : S.submitOff}
             disabled={!canSubmit} onClick={onSubmit}
-            title={commentRequired ? "Add a comment for 1st place to continue" : "Submit your placements for this category"}>
-            {submitLoading ? "Submitting…" : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
+            title={isRunoff
+              ? (remaining > 0 ? "Give every photo a place to continue" : "Submit your tiebreaker ranking")
+              : (commentRequired ? "Add a comment for 1st place to continue" : "Submit your placements for this category")}>
+            {submitLoading ? "Submitting…"
+              : isRunoff ? "Submit Ranking"
+              : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
           </button>
         </div>
       </div>
@@ -721,6 +831,9 @@ export default function JudgingApp() {
   const [categories, setCategories]     = useState([]);
   const [dataLoading, setDataLoading]   = useState(false);
   const [dataError, setDataError]       = useState("");
+
+  // ── Runoff (round 2) ────────────────────────────────────────
+  const [runoffGroups, setRunoffGroups] = useState(null); // null = not loaded yet
 
   // ── Judging state ───────────────────────────────────────────
   const [selectedCat, setSelectedCat]     = useState(null);
@@ -807,12 +920,27 @@ export default function JudgingApp() {
         setJudgeHistory(data.votes);
         const done = new Set(); const noAwd = new Set();
         Object.entries(data.votes).forEach(([catName, voteArr]) => {
-          const id = catName.toLowerCase().replace(/[^a-z0-9]/g, "_");
+          const id = catId(catName);
           if (voteArr.length > 0) done.add(id); else noAwd.add(id);
         });
         setSubmittedCats(done); setNoAwardCats(noAwd);
       }
     } catch (e) { console.error("History load failed:", e); }
+  }, []);
+
+  // Which tiebreakers are open, per the Runoff tab in the Google Sheet.
+  // Read through Apps Script rather than a published CSV so a freshly
+  // opened runoff is visible immediately (published CSVs cache for minutes).
+  const loadRunoffConfig = useCallback(async () => {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.startsWith("YOUR_")) { setRunoffGroups([]); return; }
+    try {
+      const res  = await fetch(`${APPS_SCRIPT_URL}?action=runoff`);
+      const data = await res.json();
+      setRunoffGroups(data.status === "success" && data.open ? (data.groups || []) : []);
+    } catch (e) {
+      console.error("Runoff config load failed:", e);
+      setRunoffGroups([]);
+    }
   }, []);
 
   // ── Login ───────────────────────────────────────────────────
@@ -843,7 +971,11 @@ export default function JudgingApp() {
       if (!url) { setDataError("No entries sheet URL found. Contact your administrator."); setPhase("browse"); setLoginLoading(false); return; }
       setEntriesUrl(url);
       setPhase("loading");
-      await Promise.all([loadEntries(url), loadJudgeHistory(judgeId)]);
+      await Promise.all([
+        loadEntries(url),
+        loadJudgeHistory(judgeId),
+        ...(IS_RUNOFF ? [loadRunoffConfig()] : []),
+      ]);
       setPhase("browse");
     } catch (e) {
       setLoginError("Could not verify credentials. Check your connection and try again.");
@@ -910,9 +1042,10 @@ export default function JudgingApp() {
   const handleCategorySelect = (cat) => {
     window.scrollTo(0, 0);
     setSelectedCat(cat); setViewingEssay(null); setLightbox(null); setFPComment("");
-    if (judgeHistory?.[cat.name]) {
+    const histKey = cat.isRunoff ? cat.name + RUNOFF_SUFFIX : cat.name;
+    if (judgeHistory?.[histKey]) {
       const prev = {}; let comment = "";
-      judgeHistory[cat.name].forEach((v) => {
+      judgeHistory[histKey].forEach((v) => {
         prev[v.entryId] = v.place;
         if (v.place === 1 && v.comment) comment = v.comment;
       });
@@ -955,9 +1088,15 @@ export default function JudgingApp() {
     const effectiveVotes = forceNoAward ? {} : votes;
     const allEntries     = selectedCat.entries;
 
+    const isRunoff = !!selectedCat.isRunoff;
+
     const payload = {
       judgeId,
-      category:  selectedCat.name,
+      // Round 2 votes are stored under a suffixed category name. That
+      // gives them their own judge+category key in the Votes sheet, so
+      // a runoff submission can never overwrite round 1.
+      category:  isRunoff ? selectedCat.name + RUNOFF_SUFFIX : selectedCat.name,
+      round:     isRunoff ? 2 : 1,
       timestamp: new Date().toISOString(),
       noAward:   Object.keys(effectiveVotes).length === 0,
       votes: Object.entries(effectiveVotes).map(([entryId, place]) => {
@@ -981,7 +1120,7 @@ export default function JudgingApp() {
         });
       } else { await new Promise((r) => setTimeout(r, 700)); }
 
-      setJudgeHistory((prev) => ({ ...prev, [selectedCat.name]: payload.votes }));
+      setJudgeHistory((prev) => ({ ...prev, [payload.category]: payload.votes }));
       const catId = selectedCat.id;
       if (payload.noAward) { setNoAwardCats((p) => new Set([...p, catId])); }
       else                  { setSubmittedCats((p) => new Set([...p, catId])); }
@@ -990,11 +1129,28 @@ export default function JudgingApp() {
     setSubmitLoading(false);
   };
 
+  // ── Runoff category list ────────────────────────────────────
+  // In runoff mode the browse grid shows ONLY these, so the round 1
+  // categories are unreachable and cannot be resubmitted by accident.
+  const runoffCategories = IS_RUNOFF && runoffGroups
+    ? buildRunoffCategories(categories, runoffGroups)
+    : [];
+  const activeCategories = IS_RUNOFF ? runoffCategories : categories;
+
   // ── Derived submit state ────────────────────────────────────
   const fp = firstPlaceId();
-  const commentRequired = !!fp && !firstPlaceComment.trim();
-  const canSubmit       = !commentRequired && !submitLoading;
+  const inRunoff        = !!selectedCat?.isRunoff;
   const placesAssigned  = Object.keys(votes).length;
+  // A runoff has exactly as many contested slots as photos, so requiring
+  // every slot filled is the same as requiring every photo be labelled.
+  const runoffComplete  = inRunoff &&
+    placesAssigned === (selectedCat.contestedPlaces || []).length;
+  // The 1st-place comment is required in round 1 only. Judges already
+  // justified their first place there; asking again for a 2nd/3rd
+  // runoff is friction with no payoff.
+  const commentRequired = !inRunoff && !!fp && !firstPlaceComment.trim();
+  const canSubmit       = !submitLoading && !commentRequired &&
+                          (!inRunoff || runoffComplete);
   const assigned        = { 1: null, 2: null, 3: null, hm: 0 };
   Object.values(votes).forEach((p) => { if (p <= 3) assigned[p] = true; if (p === HM) assigned.hm++; });
 
@@ -1098,6 +1254,68 @@ export default function JudgingApp() {
         <div style={{ ...S.center, color: "#e06060" }}>{dataError}</div>
       </div>
     );
+    // ── Round 2: tiebreakers only ─────────────────────────────
+    if (IS_RUNOFF) {
+      if (runoffCategories.length === 0) return (
+        <div style={S.app}><div style={S.grain} />
+          <Header right={`Judging as: ${judgeId}`} />
+          <div style={{ ...S.hero, paddingTop: 90, textAlign: "center" }}>
+            <h1 style={S.heroTitle}>No Tiebreakers Open</h1>
+            <p style={S.heroSub}>
+              There are no tiebreakers to vote on right now. You'll get a link
+              if a second round is needed.
+            </p>
+          </div>
+        </div>
+      );
+
+      const doneCount = runoffCategories.filter(
+        (c) => submittedCats.has(c.id) || noAwardCats.has(c.id)).length;
+
+      return (
+        <div style={S.app}><div style={S.grain} />
+          <Header right={`Judging as: ${judgeId}`} />
+          <div style={S.hero}>
+            <h1 style={S.heroTitle}>Round 2 — Tiebreakers</h1>
+            <p style={S.heroSub}>
+              {runoffCategories.length} {runoffCategories.length === 1 ? "category" : "categories"} ended
+              round 1 with a tie · {doneCount} of {runoffCategories.length} done
+            </p>
+          </div>
+          <div style={{ maxWidth: 880, margin: "0 auto", padding: "0 24px" }}>
+            <div style={S.helpPanel}>
+              <div style={S.helpTitle}><span>⚖️</span> How this round works</div>
+              These photos finished round 1 on exactly the same score, so the
+              placement between them is still undecided. Rank them against each
+              other — every photo gets a place, and you can't submit until they
+              all do. Your round 1 votes are unchanged and nothing else is being
+              re-judged.
+            </div>
+          </div>
+          <div style={S.catGrid}>
+            {runoffCategories.map((cat) => {
+              const isDone      = submittedCats.has(cat.id) || noAwardCats.has(cat.id);
+              const displayName = CATEGORY_DISPLAY_NAMES[cat.name] || cat.name;
+              return (
+                <div key={cat.id} style={S.catCard(isDone ? "done" : "default")}
+                  onClick={() => handleCategorySelect(cat)}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = isDone ? "#4a7a4a" : "#d4a017"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = isDone ? "#2d4a2d" : "#2a2a2a"; e.currentTarget.style.transform = "translateY(0)"; }}
+                >
+                  {isDone && <span style={S.catBadgeDone}>✓ Done</span>}
+                  <div style={S.catName}>{displayName}</div>
+                  <div style={S.catCount}>
+                    {cat.entries.length} {cat.isEssayCategory ? "tied submissions" : "photos tied"}
+                    {" · deciding "}{contestedLabel(cat.contestedPlaces)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div style={S.app}><div style={S.grain} />
         <Header right={`Judging as: ${judgeId}`} />
@@ -1210,14 +1428,14 @@ export default function JudgingApp() {
   // PHASE: JUDGE
   // ============================================================
   if (phase === "judge" && selectedCat) {
-    const showTutorial = !hasSeenTutorial && !viewingEssay;
+    const showTutorial = !hasSeenTutorial && !viewingEssay && !IS_RUNOFF;
 
     // ── Essay: detail view (photos + vote for THIS essay) ──────
     if (selectedCat.isEssayCategory && viewingEssay) {
       const essayPlace = getEntryPlace(viewingEssay.id);
       return (
         <div style={S.app}><div style={S.grain} />
-          {!hasSeenTutorial && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
+          {!hasSeenTutorial && !IS_RUNOFF && <WelcomeTutorial onDismiss={() => setHasSeenTutorial(true)} />}
           <Header right={`Judging as: ${judgeId}`} />
           <Breadcrumb phase="judge" selectedCat={selectedCat} viewingEssay={viewingEssay} onNavigate={handleBreadcrumbNavigate} />
           <Lightbox lightbox={lightbox} onClose={() => setLightbox(null)} />
@@ -1262,7 +1480,7 @@ export default function JudgingApp() {
             {/* Vote for this essay from within the detail view */}
             <div id={`entry-${viewingEssay.id}`} style={S.essayVotePanel}>
               <div style={S.essayVoteTitle}>Your vote for "{viewingEssay.essayTitle}"</div>
-              <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} />
+              <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
               {essayPlace && (
                 <div style={{ marginTop: 10, fontSize: 14, color: PLACE_COLORS[essayPlace].bg }}>
                   Currently assigned: {PLACE_LABELS[essayPlace]}
@@ -1273,7 +1491,7 @@ export default function JudgingApp() {
             {fp === viewingEssay.id && (
               <div style={S.commentBox}>
                 <label style={S.commentLabel}>
-                  Why does "{viewingEssay.essayTitle}" deserve 1st Place? *
+                  Why does "{viewingEssay.essayTitle}" deserve 1st Place?{commentRequired ? " *" : " (optional)"}
                 </label>
                 <textarea style={S.textarea} value={firstPlaceComment}
                   onChange={(e) => setFPComment(e.target.value)}
@@ -1301,8 +1519,12 @@ export default function JudgingApp() {
           <button style={S.backBtn}
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
-            onClick={() => { handleBreadcrumbNavigate({ phase: "browse", selectedCat: null, viewingEssay: null }); setViewingEssayFolder(true); }}>
-            ← Photo Essay
+            onClick={() => {
+              handleBreadcrumbNavigate({ phase: "browse", selectedCat: null, viewingEssay: null });
+              // The Photo Essay folder only exists in round 1
+              if (!IS_RUNOFF) setViewingEssayFolder(true);
+            }}>
+            {IS_RUNOFF ? "← Tiebreakers" : "← Photo Essay"}
           </button>
         </div>
         <div key={`essay-list-${selectedCat.id}`} style={S.judgeWrap}>
@@ -1310,6 +1532,13 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "submission" : "submissions"} · Click a thumbnail to view all photos in the series
           </div>
+          {selectedCat.isRunoff && (
+            <div style={S.helpPanel}>
+              <div style={S.helpTitle}><span>⚖️</span> Tiebreaker — deciding {contestedLabel(selectedCat.contestedPlaces)}</div>
+              These {selectedCat.entries.length} finished round 1 on the same score. Rank them
+              against each other — every one needs a place before you can submit.
+            </div>
+          )}
           {CATEGORY_DESCRIPTIONS[selectedCat.id] && (
             <div style={S.helpPanel}>
               <div style={S.helpTitle}>
@@ -1340,7 +1569,7 @@ export default function JudgingApp() {
                       onClick={() => handleViewEssay(essay)}>
                       View {essay.imageCount} photos →
                     </button>
-                    <VoteRow entryId={essay.id} votes={votes} onToggleVote={toggleVote} />
+                    <VoteRow entryId={essay.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
                   </div>
                 </div>
               );
@@ -1349,7 +1578,7 @@ export default function JudgingApp() {
           {fp && selectedCat.entries.find((e) => e.id === fp) && (
             <div style={S.commentBox}>
               <label style={S.commentLabel}>
-                Why does "{selectedCat.entries.find((e) => e.id === fp)?.essayTitle}" deserve 1st Place? *
+                Why does "{selectedCat.entries.find((e) => e.id === fp)?.essayTitle}" deserve 1st Place?{commentRequired ? " *" : " (optional)"}
               </label>
               <textarea style={S.textarea} value={firstPlaceComment}
                 onChange={(e) => setFPComment(e.target.value)}
@@ -1377,7 +1606,7 @@ export default function JudgingApp() {
             onMouseEnter={(e) => (e.target.style.color = "#d4a017")}
             onMouseLeave={(e) => (e.target.style.color = "#a0a090")}
             onClick={() => handleBreadcrumbNavigate({ phase: "browse", selectedCat: null, viewingEssay: null })}>
-            ← Categories
+            {IS_RUNOFF ? "← Tiebreakers" : "← Categories"}
           </button>
         </div>
         <div key={`single-${selectedCat.id}`} style={S.judgeWrap}>
@@ -1385,6 +1614,13 @@ export default function JudgingApp() {
           <div style={S.catMeta}>
             {selectedCat.entries.length} {selectedCat.entries.length === 1 ? "entry" : "entries"} · Click any image to enlarge for better detail
           </div>
+          {selectedCat.isRunoff && (
+            <div style={S.helpPanel}>
+              <div style={S.helpTitle}><span>⚖️</span> Tiebreaker — deciding {contestedLabel(selectedCat.contestedPlaces)}</div>
+              These {selectedCat.entries.length} finished round 1 on the same score. Rank them
+              against each other — every one needs a place before you can submit.
+            </div>
+          )}
           {CATEGORY_DESCRIPTIONS[selectedCat.id] && (
             <div style={S.helpPanel}>
               <div style={S.helpTitle}>
@@ -1411,7 +1647,7 @@ export default function JudgingApp() {
                   <div style={S.entryInfo}>
                     {entry.headline && <div style={S.entryHeadline}>{entry.headline}</div>}
                     {entry.caption  && <div style={S.entryCaption}>{entry.caption}</div>}
-                    <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} />
+                    <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
                   </div>
                 </div>
               );
@@ -1419,7 +1655,7 @@ export default function JudgingApp() {
           </div>
           {fp && selectedCat.entries.find((e) => e.id === fp) && (
             <div style={S.commentBox}>
-              <label style={S.commentLabel}>Why does this image deserve 1st Place? *</label>
+              <label style={S.commentLabel}>Why does this image deserve 1st Place?{commentRequired ? " *" : " (optional)"}</label>
               <textarea style={S.textarea} value={firstPlaceComment}
                 onChange={(e) => setFPComment(e.target.value)}
                 placeholder="Share your reasoning for this 1st place selection…" />
@@ -1440,7 +1676,11 @@ export default function JudgingApp() {
   // ============================================================
   if (phase === "submitted") {
     const wasNoAward = noAwardCats.has(selectedCat?.id);
-    const remaining  = categories.length - submittedCats.size - noAwardCats.size;
+    // Count only the categories in play. In runoff mode submittedCats also
+    // holds the judge's round 1 categories, so counting sizes would be wrong.
+    const remaining = activeCategories.filter(
+      (c) => !submittedCats.has(c.id) && !noAwardCats.has(c.id)).length;
+    const unit = IS_RUNOFF ? "tiebreaker" : "category";
     return (
       <div style={S.app}><div style={S.grain} />
         <Header right={`Judging as: ${judgeId}`} />
@@ -1453,14 +1693,16 @@ export default function JudgingApp() {
               : <>Your rankings for <strong style={{ color: "#e8e4df" }}>{selectedCat?.name}</strong> have been recorded.</>}
             {" "}
             {remaining > 0
-              ? `${remaining} ${remaining === 1 ? "category" : "categories"} remaining.`
-              : "You have reviewed all categories. Thank you!"}
+              ? `${remaining} ${remaining === 1 ? unit : unit + "s"} remaining.`
+              : IS_RUNOFF
+                ? "That's every tiebreaker. Thank you!"
+                : "You have reviewed all categories. Thank you!"}
           </p>
           <button style={S.smallBtn}
             onMouseEnter={(e) => { e.target.style.borderColor="#d4a017"; e.target.style.color="#d4a017"; }}
             onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#aea8a4"; }}
             onClick={() => { setPhase("browse"); setSelectedCat(null); setVotes({}); setFPComment(""); }}>
-            ← Back to Categories
+            {IS_RUNOFF ? "← Back to Tiebreakers" : "← Back to Categories"}
           </button>
         </div>
       </div>

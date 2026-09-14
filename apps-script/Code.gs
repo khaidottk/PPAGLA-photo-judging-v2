@@ -881,12 +881,17 @@ function writeRunoffAudit(ss, audit, unresolved) {
   if (block.length === 0) return;
   sheet.getRange(2, first + 1, block.length, 6).setValues(block);
 
-  // Flag any group the script could not break
+  // Flag any group the script could not break — and UNflag the ones it can
+  // now break. A partly-voted group is often tied on the way to a clear
+  // result: with one judge in, two photos can sit on identical counts and
+  // exhaust every tiebreak, then separate once the rest vote. Setting the
+  // colour without ever clearing it would leave that transient deadlock
+  // showing as a permanent warning on a group that resolved perfectly well.
   for (let i = 1; i < rows.length; i++) {
     const cat = String(rows[i][c("Category")] || "").trim();
-    if (cat && unresolved[cat]) {
-      sheet.getRange(i + 1, 1, 1, headers.length).setBackground("#ffe0b2");
-    }
+    if (!cat) continue;
+    sheet.getRange(i + 1, 1, 1, headers.length)
+      .setBackground(unresolved[cat] ? "#ffe0b2" : null);
   }
 }
 

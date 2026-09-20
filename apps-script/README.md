@@ -31,9 +31,11 @@ submission cannot overwrite anything from round 1.
 2. Set `JUDGING_SITE_URL` near the top to your deployed site (e.g.
    `https://judging.example.com`). It is only used to print a ready-made round 2
    link in the tie-check dialog.
-3. Run `fixVotesHeaders()` once from the editor. This adds the new **Round**
-   column to the Votes sheet. Existing rows leave it blank, which counts as
-   round 1 — nothing needs migrating.
+3. Nothing to migrate. The first submission after deploying widens the Votes
+   sheet with any missing columns (**Round**, **CategoryComment**) on its own.
+   Existing rows leave them blank — a blank Round counts as round 1. If you want
+   the headers in place before judging opens, run **PPAGLA → Fix Votes
+   Headers**.
 4. Deploy → Manage deployments → edit the existing deployment → **New version**
    → Deploy. Keeping the same deployment means the site's
    `VITE_APPS_SCRIPT_URL` stays valid.
@@ -76,6 +78,58 @@ random), before → after head-to-head:
 
 So with a panel of three: **do not add a fourth judge.** Go to five or stay at
 three.
+
+## Judge comments
+
+Judges write two kinds of comment:
+
+- **A note on each photo they place** — "why this photo for 2nd?". Required for
+  their 1st place pick, optional for the rest. Stored against the **entry id**,
+  in the `Comment` column of `Votes`.
+- **A round-up on the category** — optional, for things that belong to the field
+  as a whole rather than one image. Stored in `CategoryComment`, repeated on
+  every row of the submission.
+
+Keying notes to the entry rather than to a place is what makes them survive
+aggregation. A judge's note follows its photo into whatever award the combined
+ballots give it.
+
+### The `Comments` tab — the posting worksheet
+
+One row per photo that actually won something, rebuilt from the finished Tally
+so its placements can never drift from it:
+
+| Column | Meaning |
+|---|---|
+| `Category`, `Place`, `EntryId`, `Title`, `Photographer` | The award |
+| **`Matching Comments`** | Notes from judges who gave this photo **the exact place it ended up with**. Quotable verbatim. |
+| `Other Comments` | Notes on the same photo from judges who ranked it elsewhere, each labelled with the place *that* judge gave it |
+| `Category Comments` | The round-ups, on the category's first row |
+
+**Rows with a quotable comment are shaded green.** That is the at-a-glance
+answer to "can I just post a judge's own words under this award?" — if the row
+is green, yes.
+
+Where it is blank, no judge put that photo at that place; the award came out of
+the combined weighting. Then either quote from `Other Comments` with the
+mismatch edited out, or write the line yourself. Categories nobody awarded still
+get a row, marked `No Award`, so a round-up explaining why is not dropped.
+
+### The `Tally` tab
+
+Two columns at the far right mirror the same data next to the scores:
+`Judge Comments` (notes on that photo, a `✓` marking each one whose judge gave
+it the place it won) and `Category Comments` (the round-ups, on the category's
+top row).
+
+Everything is rewritten from `Votes` on every submission, so edits made in
+either tab will not stick.
+
+### Contests judged before this change
+
+Judges used to comment only on their 1st place pick, in the same `Comment`
+column. That data reads correctly as-is — it was always a note about that photo,
+and it still is.
 
 ## The `Runoff` tab
 

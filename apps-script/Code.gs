@@ -8,8 +8,9 @@
 //       Votes    — audit trail, written automatically
 //       Tally    — aggregated scores, rebuilt on each submission
 //       Entries  — import your entries.csv here (File → Import)
-//     A fourth tab, "Runoff", is created automatically the first
-//     time you check for ties.
+//     Two more tabs appear on their own: "Comments" (each judge's
+//     write-up per category, rebuilt on every submission) and
+//     "Runoff" (the first time you check for ties).
 //
 //  2. Paste this script: Extensions → Apps Script → replace Code.gs
 //
@@ -56,6 +57,7 @@ const VOTES_SHEET_NAME   = "Votes";
 const TALLY_SHEET_NAME   = "Tally";
 const ENTRIES_SHEET_NAME = "Entries";
 const RUNOFF_SHEET_NAME  = "Runoff";
+const COMMENTS_SHEET_NAME = "Comments";
 
 // ── Scoring weights ──────────────────────────────────────────
 // Used to rank entries in the Tally. Adjust if needed.
@@ -65,6 +67,10 @@ const WEIGHTS = { 1: 4, 2: 3, 3: 2, 4: 1 }; // 4 = HM
 // 1st, 2nd, 3rd, then four Honorable Mentions.
 const PLACE_NAMES = ["1st Place", "2nd Place", "3rd Place", "HM", "HM", "HM", "HM"];
 const PLACE_CODES = { "1st Place": 1, "2nd Place": 2, "3rd Place": 3, "HM": 4 };
+
+// Place code → label, the reverse of PLACE_CODES. Used when writing the
+// Votes sheet and when labelling judge comments in the Tally.
+const PLACE_LABELS = { 1: "1st Place", 2: "2nd Place", 3: "3rd Place", 4: "HM" };
 
 // ── Runoff (round 2) settings ────────────────────────────────
 // Category suffix used for round 2 vote rows. Because this makes the
@@ -86,7 +92,15 @@ const VOTES_HEADERS = [
   "EntryId",   "Place",   "PlaceLabel",
   "Title",     "Photographer", "Publication",
   "Comment",   "NoAward", "Round",
+  "CategoryComment",
 ];
+
+// "Comment" is the OLD per-entry field: up to and including the Q3 2026
+// contest, judges justified their 1st place pick and nothing else, so the
+// text sat on that one vote row. "CategoryComment" is what judges write
+// now — one comment about the whole category, repeated on every row of
+// the submission so the tab reads sensibly however you sort it. Both are
+// read back, so older contests still show their comments.
 
 // ── Runoff sheet columns ─────────────────────────────────────
 // Category...Status describe the tie. ManualPlace is yours to fill in.
@@ -97,6 +111,19 @@ const RUNOFF_HEADERS = [
   "ContestedPlaces", "GroupId", "R1Score", "Status",
   "ManualPlace",
   "R2 1st", "R2 2nd", "R2 3rd", "R2 HM", "R2Score", "FinalPlace",
+];
+
+
+// ── Comments sheet columns ───────────────────────────────────
+// One row per award-winning photo: the worksheet you post from.
+// "Matching Comments" is the useful one — notes from judges who gave
+// this photo the exact place it ended up with, so they can be quoted
+// verbatim under the award. "Other Comments" are notes on the same
+// photo from judges who ranked it somewhere else; still worth reading,
+// but they describe a different placement than the one you are posting.
+const COMMENTS_HEADERS = [
+  "Category", "Place", "EntryId", "Title", "Photographer",
+  "Matching Comments", "Other Comments", "Category Comments",
 ];
 
 
@@ -136,7 +163,14 @@ function doGet(e) {
 
     const history = buildJudgeHistory(ss, judgeId);
 
-    return jsonResponse({ status: "success", votes: history });
+    // Category comments ride alongside rather than inside `votes`, whose
+    // array-per-category shape has nowhere to hang a comment when a judge
+    // submits No Award.
+    return jsonResponse({
+      status:   "success",
+      votes:    history,
+      comments: buildJudgeComments(ss, judgeId),
+    });
   } catch (err) {
     return jsonResponse({ status: "error", message: err.message });
   }
@@ -148,6 +182,7 @@ function doGet(e) {
 // ============================================================
 function writeVotesToSheet(ss, data) {
   const sheet = getOrCreateSheet(ss, VOTES_SHEET_NAME, VOTES_HEADERS);
+  ensureVotesHeaders(sheet);
 
   // Remove any previous submission for this judge + category
   // so a resubmission cleanly replaces the old one.
@@ -158,13 +193,13 @@ function writeVotesToSheet(ss, data) {
   const ts       = data.timestamp || new Date().toISOString();
   const noAward  = !!(data.noAward || !data.votes || data.votes.length === 0);
   const round    = Number(data.round) === 2 ? 2 : 1;
-  const placeLabels = { 1: "1st Place", 2: "2nd Place", 3: "3rd Place", 4: "HM" };
+  const catComment = String(data.categoryComment || "").trim();
 
   if (noAward) {
     sheet.appendRow([
       ts, data.judgeId, data.category,
       "", "", "No Award",
-      "", "", "", "", true, round,
+      "", "", "", "", true, round, catComment,
     ]);
     return;
   }
@@ -176,15 +211,37 @@ function writeVotesToSheet(ss, data) {
       data.category,
       vote.entryId,
       vote.place,
-      placeLabels[vote.place] || String(vote.place),
+      PLACE_LABELS[vote.place] || String(vote.place),
       vote.title        || "",
       vote.photographer || "",
       vote.publication  || "",
       vote.comment      || "",
       false,
       round,
+      catComment,
     ]);
   });
+}
+
+
+// ============================================================
+// ensureVotesHeaders — widens an existing Votes tab when this
+// script gains a column, so an in-flight contest keeps working
+// without anyone having to run a migration by hand.
+// ============================================================
+function ensureVotesHeaders(sheet) {
+  if (sheet.getLastRow() === 0) return; // brand new, getOrCreateSheet set them
+  const width   = sheet.getLastColumn();
+  const current = width ? sheet.getRange(1, 1, 1, width).getValues()[0] : [];
+
+  const missing = VOTES_HEADERS.filter(function (h) {
+    return current.indexOf(h) === -1;
+  });
+  if (!missing.length) return;
+
+  sheet.getRange(1, current.length + 1, 1, missing.length)
+    .setValues([missing])
+    .setFontWeight("bold");
 }
 
 
@@ -242,6 +299,72 @@ function buildJudgeHistory(ss, judgeId) {
   }
 
   return history;
+}
+
+
+// ============================================================
+// buildJudgeComments — one judge's category comments, keyed by the
+// RAW category name (runoff suffix included) so the app can look one
+// up with the same key it uses for vote history.
+// ============================================================
+function buildJudgeComments(ss, judgeId) {
+  const sheet = ss.getSheetByName(VOTES_SHEET_NAME);
+  if (!sheet) return {};
+
+  const rows = sheet.getDataRange().getValues();
+  const out  = {};
+
+  // Per-entry notes come back through buildJudgeHistory instead, already
+  // attached to the vote they belong to.
+  eachCommentRow(rows, function (rec) {
+    if (String(rec.judgeId) !== String(judgeId)) return;
+    if (!rec.categoryComment) return;
+    if (!out[rec.rawCategory]) out[rec.rawCategory] = rec.categoryComment;
+  });
+
+  return out;
+}
+
+
+// ============================================================
+// eachCommentRow — the single place that knows how comments are
+// stored. Calls back once per vote row that carries any text.
+//
+//   entryComment    "Comment"          why this photo got this place
+//   categoryComment "CategoryComment"  the judge's round-up on the category
+//
+// Contests judged before the category box existed only ever filled
+// "Comment", and only on the 1st place row. That still reads correctly
+// here: it was a note about that photo, and it stays attached to it.
+// ============================================================
+function eachCommentRow(rows, fn) {
+  const headers = rows[0] || [];
+  const c       = (name) => headers.indexOf(name);
+  const iEntry  = c("Comment");
+  const iCat    = c("CategoryComment");
+  const iRound  = c("Round");
+
+  for (let i = 1; i < rows.length; i++) {
+    const row         = rows[i];
+    const rawCategory = String(row[c("Category")] || "").trim();
+    const judgeId     = String(row[c("JudgeId")]  || "").trim();
+    if (!rawCategory || !judgeId) continue;
+
+    const entryComment = iEntry >= 0 ? String(row[iEntry] || "").trim() : "";
+    const catComment   = iCat   >= 0 ? String(row[iCat]   || "").trim() : "";
+    if (!entryComment && !catComment) continue;
+
+    fn({
+      judgeId:         judgeId,
+      rawCategory:     rawCategory,
+      category:        baseCategoryName(rawCategory),
+      entryId:         String(row[c("EntryId")] || "").trim(),
+      place:           Number(row[c("Place")]),
+      entryComment:    entryComment,
+      categoryComment: catComment,
+      runoff:          isRunoffRow(rawCategory, iRound >= 0 ? row[iRound] : 1),
+    });
+  }
 }
 
 
@@ -332,6 +455,105 @@ function collectRunoffBallots(rows) {
   }
 
   return ballots;
+}
+
+
+// ============================================================
+// collectCategoryComments — each judge's round-up on a category,
+//   { baseCategory → [{judgeId, comment, runoff}] }
+// One per judge per category, whichever row carries it.
+// ============================================================
+function collectCategoryComments(rows) {
+  const out  = {};
+  const seen = {};
+
+  eachCommentRow(rows, function (rec) {
+    if (!rec.categoryComment) return;
+    const key = rec.judgeId + "\u0000" + rec.rawCategory;
+    if (seen[key]) return;
+    seen[key] = true;
+
+    if (!out[rec.category]) out[rec.category] = [];
+    out[rec.category].push({
+      judgeId: rec.judgeId,
+      comment: rec.categoryComment,
+      runoff:  rec.runoff,
+    });
+  });
+
+  Object.keys(out).forEach(function (cat) { out[cat].sort(byJudge); });
+  return out;
+}
+
+
+// ============================================================
+// collectEntryComments — what judges said about each photo,
+//   { baseCategory → { entryId → [{judgeId, place, comment, runoff}] } }
+// The place is the one THAT judge gave it, which is what makes the
+// match flag in the Tally possible.
+// ============================================================
+function collectEntryComments(rows) {
+  const out = {};
+
+  eachCommentRow(rows, function (rec) {
+    if (!rec.entryComment || !rec.entryId) return;
+
+    if (!out[rec.category])              out[rec.category]              = {};
+    if (!out[rec.category][rec.entryId]) out[rec.category][rec.entryId] = [];
+    out[rec.category][rec.entryId].push({
+      judgeId: rec.judgeId,
+      place:   rec.place,
+      comment: rec.entryComment,
+      runoff:  rec.runoff,
+    });
+  });
+
+  Object.keys(out).forEach(function (cat) {
+    Object.keys(out[cat]).forEach(function (id) { out[cat][id].sort(byJudge); });
+  });
+  return out;
+}
+
+// Round 1 before round 2, then judge id — stable and readable.
+function byJudge(a, b) {
+  if (!!a.runoff !== !!b.runoff) return a.runoff ? 1 : -1;
+  return String(a.judgeId).localeCompare(String(b.judgeId));
+}
+
+// Did this judge give the photo the place it actually ended up with?
+// Those are the comments that can be posted verbatim under the award.
+function commentMatches(rec, finalPlace) {
+  if (!finalPlace) return false;
+  return PLACE_LABELS[rec.place] === finalPlace;
+}
+
+// Render a judge's round-up comments into one cell.
+function formatComments(list) {
+  if (!list || !list.length) return "";
+  return list.map(function (x) {
+    return (x.judgeId || "Judge") + (x.runoff ? " (round 2)" : "") + ": " + x.comment;
+  }).join("\n\n");
+}
+
+// Render notes about one photo. Each is labelled with the place THAT
+// judge gave it, and marked when it matches the final award.
+//   which: "match" | "other" | "all"
+function formatEntryNotes(list, finalPlace, which) {
+  if (!list || !list.length) return "";
+
+  return list.filter(function (x) {
+    if (which === "match") return commentMatches(x, finalPlace);
+    if (which === "other") return !commentMatches(x, finalPlace);
+    return true;
+  }).map(function (x) {
+    const label = PLACE_LABELS[x.place] || "";
+    const notes = [];
+    if (label) notes.push("had it " + label);
+    if (x.runoff) notes.push("round 2");
+    const suffix = notes.length ? " (" + notes.join(", ") + ")" : "";
+    const mark   = (which === "all" && commentMatches(x, finalPlace)) ? "\u2713 " : "";
+    return mark + (x.judgeId || "Judge") + suffix + ": " + x.comment;
+  }).join("\n\n");
 }
 
 
@@ -723,12 +945,22 @@ function rebuildTally(ss) {
   const runoffAgg = aggregateVotes(rows, true);   // round 2, keyed by base category
   const ballots   = collectRunoffBallots(rows);
   const runoffCfg = readRunoffSheet(ss);
+  const comments  = collectCategoryComments(rows);
+  const notes     = collectEntryComments(rows);
 
+  // The two comment columns stay LAST so appending them can't shift any
+  // column exportWinners looks up. "Judge Comments" holds the notes about
+  // that photo, each marked with a check when the judge gave it the place
+  // it actually won. "Category Comments" is the per-category round-up, so
+  // it sits once on the category's top row.
   const tallyHeaders = [
     "Category", "EntryId", "Title", "Photographer", "Publication",
     "1st Votes", "2nd Votes", "3rd Votes", "HM Votes",
-    "Weighted Score", "Suggested Place",
+    "Weighted Score", "Suggested Place", "Judge Comments", "Category Comments",
   ];
+  const iPlaceCol   = tallyHeaders.indexOf("Suggested Place");
+  const iNoteCol    = tallyHeaders.indexOf("Judge Comments");
+  const iCommentCol = tallyHeaders.indexOf("Category Comments");
   const tallyRows = [tallyHeaders];
 
   const audit      = {};  // "category entryId" → how the tie broke
@@ -793,6 +1025,8 @@ function rebuildTally(ss) {
 
     // ── Build the output rows ───────────────────────────────────
     let rank = 0;
+    let catComment = formatComments(comments[cat]);
+
     entries.forEach((entry) => {
       // Assign suggested place: 1st/2nd/3rd then up to 4 HMs
       let suggestedPlace = "";
@@ -805,7 +1039,10 @@ function rebuildTally(ss) {
         cat, entry.entryId, entry.title, entry.photographer, entry.publication,
         entry.scores[1], entry.scores[2], entry.scores[3], entry.scores[4],
         entry.score, suggestedPlace,
+        formatEntryNotes((notes[cat] || {})[entry.entryId], suggestedPlace, "all"),
+        catComment,
       ]);
+      catComment = ""; // top row only
     });
 
     // Blank separator row between categories
@@ -835,16 +1072,25 @@ function rebuildTally(ss) {
   };
 
   for (let i = 1; i < tallyRows.length; i++) {
-    const suggestedPlace = tallyRows[i][10];
+    const suggestedPlace = tallyRows[i][iPlaceCol];
     const color = highlightColors[suggestedPlace];
     if (color) {
       tallySheet.getRange(i + 1, 1, 1, tallyHeaders.length).setBackground(color);
     }
   }
 
-  tallySheet.autoResizeColumns(1, tallyHeaders.length);
+  // Auto-size everything except the comments, which are paragraphs —
+  // auto-sizing those would blow the columns off the screen.
+  tallySheet.autoResizeColumns(1, iNoteCol);
+  [iNoteCol, iCommentCol].forEach(function (i) {
+    tallySheet.setColumnWidth(i + 1, 460);
+    tallySheet.getRange(1, i + 1, tallyRows.length, 1)
+      .setWrap(true)
+      .setVerticalAlignment("top");
+  });
 
   writeRunoffAudit(ss, audit, unresolved);
+  writeCommentsSheet(ss, tallyRows, tallyHeaders, comments, notes);
 }
 
 
@@ -888,6 +1134,85 @@ function writeRunoffAudit(ss, audit, unresolved) {
       sheet.getRange(i + 1, 1, 1, headers.length).setBackground("#ffe0b2");
     }
   }
+}
+
+
+// ============================================================
+// writeCommentsSheet — the posting worksheet: one row per photo that
+// actually won something, with the notes judges wrote about it split
+// into the ones that match its final award and the ones that don't.
+//
+// Built from the finished tally rows so the placements here can never
+// drift from the placements there.
+// ============================================================
+function writeCommentsSheet(ss, tallyRows, tallyHeaders, comments, notes) {
+  const sheet = getOrCreateSheet(ss, COMMENTS_SHEET_NAME, COMMENTS_HEADERS);
+
+  sheet.clearContents();
+  sheet.clearFormats();
+
+  const col      = (name) => tallyHeaders.indexOf(name);
+  const iCat     = col("Category");
+  const iEntry   = col("EntryId");
+  const iTitle   = col("Title");
+  const iPhoto   = col("Photographer");
+  const iPlace   = col("Suggested Place");
+
+  const rows      = [COMMENTS_HEADERS];
+  const seenCats  = {};
+  let   matched   = 0;
+
+  for (let i = 1; i < tallyRows.length; i++) {
+    const row   = tallyRows[i];
+    const cat   = String(row[iCat]   || "").trim();
+    const place = String(row[iPlace] || "").trim();
+    if (!cat || !place) continue; // separator rows and also-rans
+
+    const entryId = String(row[iEntry] || "").trim();
+    const list    = (notes[cat] || {})[entryId];
+    const match   = formatEntryNotes(list, place, "match");
+    if (match) matched++;
+
+    // The category round-up belongs to the category, not the photo, so
+    // it rides on the first winner listed for that category.
+    const catComment = seenCats[cat] ? "" : formatComments(comments[cat]);
+    seenCats[cat] = true;
+
+    rows.push([
+      cat, place, entryId, row[iTitle] || "", row[iPhoto] || "",
+      match,
+      formatEntryNotes(list, place, "other"),
+      catComment,
+    ]);
+  }
+
+  // Categories nobody awarded still get a row, so a "no award this
+  // quarter" round-up is not silently dropped.
+  Object.keys(comments).sort().forEach(function (cat) {
+    if (seenCats[cat]) return;
+    rows.push([cat, "No Award", "", "", "", "", "", formatComments(comments[cat])]);
+  });
+
+  sheet.getRange(1, 1, rows.length, COMMENTS_HEADERS.length).setValues(rows);
+  sheet.getRange(1, 1, 1, COMMENTS_HEADERS.length)
+    .setFontWeight("bold").setBackground("#eeeeee");
+  sheet.setFrozenRows(1);
+
+  // Green the rows that have a quotable comment — at a glance, these are
+  // the awards you can post a judge's own words under.
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][5]) {
+      sheet.getRange(i + 1, 1, 1, COMMENTS_HEADERS.length).setBackground("#e6f4ea");
+    }
+  }
+
+  sheet.autoResizeColumns(1, 5);
+  [6, 7, 8].forEach(function (c) {
+    sheet.setColumnWidth(c, 460);
+    sheet.getRange(1, c, rows.length, 1).setWrap(true).setVerticalAlignment("top");
+  });
+
+  return matched;
 }
 
 
@@ -1086,6 +1411,7 @@ function onOpen() {
     .addSeparator()
     .addItem("Export Winners to Drive",       "exportWinners")
     .addSeparator()
+    .addItem("Fix Votes Headers",             "fixVotesHeaders")
     .addItem("Set Drive Folder ID",           "setDriveFolderId")
     .addItem("Fill Drive File IDs",           "fillDriveFileIds")
     .addToUi();

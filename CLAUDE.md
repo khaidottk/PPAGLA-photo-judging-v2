@@ -71,8 +71,9 @@ Close Voting & Check for Ties** in the Sheet, which writes the tied groups to a
   included. `contestedPlaces` therefore always has one entry per photo (e.g.
   `[1,2,3,4]` for a 4-way tie at the top, `[3,4,4]` for a group spanning 3rd and
   two HM slots). `VoteRow` takes `allowedPlaces` and `maxHms` to match.
-- Submitting requires **every** contested slot filled. The 1st-place comment is
-  optional in a runoff and there is no No Award button.
+- Submitting requires **every** contested slot filled. No comment of either kind
+  is required in a runoff — it is a ranking, not a fresh verdict — and there is
+  no No Award button.
 - Votes POST with `category: "<Name> — Runoff"` and `round: 2`. The suffix gives
   them their own judge+category key in the Votes sheet, so round 1 is never
   overwritten. `RUNOFF_SUFFIX` uses an em dash and must match `Code.gs` exactly.
@@ -87,7 +88,24 @@ Close Voting & Check for Ties** in the Sheet, which writes the tied groups to a
 - HM (Honorable Mention, place `4`) allows up to **4** per category (`MAX_HMS = 4`).
 - Clicking an already-assigned button deselects it.
 - Judging is **blind**: `photographer` and `publication` are loaded but never rendered in the judge view.
-- A 1st-place comment field appears when a 1st-place vote is cast.
+- Judges write two kinds of comment, both optionally published with the winners:
+  - **Per-entry notes** (`EntryCommentBox`, `entryComments` state, keyed by entry
+    id). The box opens inside an entry card as soon as that entry is placed.
+    Required for the 1st place pick only (`noteRequired`), optional elsewhere.
+    Sent as `comment` on that entry's vote → the `Comment` column of Votes, and
+    restored from `buildJudgeHistory`, which already returns it per vote.
+  - **A category round-up** (`CategoryCommentBox`, `categoryComment` state),
+    always optional. Sent as a top-level `categoryComment` → the
+    `CategoryComment` column, repeated on every row of the submission. Comes back
+    from `doGet` in a separate `comments` map, kept out of `votes` because that
+    array-per-category shape has nowhere to hang a comment on a No Award.
+- Notes are keyed to the **entry**, never to a place. Final placements come from
+  the combined ballots and routinely differ from any one judge's, so a note
+  written about a slot would be wrong in print; a note about a photo stays true.
+- `rebuildTally` uses this to flag quotable comments. `commentMatches` asks
+  whether a judge gave the photo the place it actually won; the `Comments` tab
+  splits notes into `Matching Comments` (quotable verbatim, row shaded green) and
+  `Other Comments`, and the Tally marks matches with `✓`.
 
 ### Image loading
 

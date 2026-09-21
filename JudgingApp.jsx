@@ -425,7 +425,12 @@ const S = {
 
   // Comment box
   commentBox:   { marginTop: 24, padding: "18px", background: "#1a1816", border: "1px solid #2d4a2d", borderRadius: 6 },
-  commentLabel: { fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", color: "#8aca8a", marginBottom: 10, display: "block" },
+  commentLabel: { fontSize: "14px", letterSpacing: "1px", textTransform: "uppercase", color: "#8aca8a", marginBottom: 8, display: "block" },
+  commentHint:  { fontSize: "14px", color: "#9a968f", lineHeight: 1.6, marginBottom: 12 },
+  // Per-entry note, shown inside an entry card once it has a place
+  entryNote:      { marginTop: 10 },
+  entryNoteLabel: { fontSize: "12px", letterSpacing: "0.8px", textTransform: "uppercase", color: "#8aca8a", marginBottom: 6, display: "block" },
+  entryNoteArea:  { width: "100%", background: "#0f0f0f", border: "1px solid #2d4a2d", borderRadius: 5, padding: "8px 10px", color: "#e8e4df", fontSize: "14px", fontFamily: "'Georgia', serif", outline: "none", boxSizing: "border-box", minHeight: "62px", resize: "vertical", lineHeight: 1.5 },
 
   // Submit bar
   submitBar:   { position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(15,15,15,0.97)", backdropFilter: "blur(12px)", borderTop: "1px solid #2a2a2a", padding: "16px 24px", zIndex: 40 },
@@ -536,7 +541,9 @@ function WelcomeTutorial({ onDismiss }) {
             </div>
           </div>
           <p>
-            <strong>💬 Add a comment</strong> when you award 1st Place to explain why that entry stood out to you.
+            <strong>💬 Say why you picked each photo.</strong> A note box opens on every entry you
+            place — required for 1st, optional for the rest. There is a box at the bottom for
+            the category as a whole too. All of it may be published with the winners.
           </p>
         </div>
         <button style={{
@@ -667,6 +674,52 @@ function ColumnSlider({ columnCount, onColumnChange }) {
   );
 }
 
+// Why this photo. Appears inside an entry card as soon as the judge gives
+// it a place, and is stored against the entry id — so the note follows the
+// photo into whatever award it finally wins, however the panel lands.
+// Required for 1st place, optional everywhere else.
+function EntryCommentBox({ place, value, onChange, required }) {
+  if (!place) return null;
+  const label = place === HM ? "Honorable Mention" : PLACE_LABELS[place];
+  return (
+    <div style={S.entryNote}>
+      <label style={S.entryNoteLabel}>
+        Why this photo for {label}?{required ? " *" : " (optional)"}
+      </label>
+      <textarea style={S.entryNoteArea} value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="What makes this image work — moment, light, composition, storytelling…" />
+    </div>
+  );
+}
+
+// One comment per category, written once and published with the winners.
+//
+// The prompt deliberately steers judges AWAY from naming places. Final
+// placements come from all the ballots combined, so a judge who writes
+// "in 1st place..." is describing their own ballot, not the result — and
+// that sentence is unusable when the panel lands somewhere else. Asking
+// them to describe the photo instead ("the rodeo frame...") keeps every
+// sentence attachable to whichever award that photo ends up with.
+function CategoryCommentBox({ categoryName, value, onChange, required }) {
+  return (
+    <div style={S.commentBox}>
+      <label style={S.commentLabel}>
+        Your comments on {categoryName}{required ? " *" : " (optional)"}
+      </label>
+      <div style={S.commentHint}>
+        Optional, and published alongside the winners. Anything about the
+        category as a whole — how strong the field was, themes you noticed,
+        what you wanted to see more of. Notes on individual photos go in the
+        box on each one.
+      </div>
+      <textarea style={S.textarea} value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="A deep field this quarter, and unusually strong on spot news — several frames would have won an average year. I'd have liked to see more work from the smaller papers…" />
+    </div>
+  );
+}
+
 function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submitLoading, onSubmit, onNoAward, votes, selectedCat }) {
   const isRunoff  = !!selectedCat?.isRunoff;
   const runoffHms = isRunoff ? (selectedCat.maxHms || 0) : 0;
@@ -769,7 +822,7 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
             <>
               <div style={S.submitStatus}>⭐ HM: {assigned.hm}/{MAX_HMS}</div>
               <div style={S.submitHint}>All placements are optional · Award only what deserves it</div>
-              {commentRequired && <div style={S.submitWarn}>💬 Add a comment explaining your 1st place choice</div>}
+              {commentRequired && <div style={S.submitWarn}>💬 Say why your 1st place pick deserves it</div>}
             </>
           )}
         </div>
@@ -787,7 +840,7 @@ function SubmitBar({ assigned, placesAssigned, commentRequired, canSubmit, submi
             disabled={!canSubmit} onClick={onSubmit}
             title={isRunoff
               ? (remaining > 0 ? "Give every photo a place to continue" : "Submit your tiebreaker ranking")
-              : (commentRequired ? "Add a comment for 1st place to continue" : "Submit your placements for this category")}>
+              : (commentRequired ? "Add a note on your 1st place pick to continue" : "Submit your placements for this category")}>
             {submitLoading ? "Submitting…"
               : isRunoff ? "Submit Ranking"
               : placesAssigned === 0 ? "Submit — No Award" : "Submit Votes"}
@@ -838,13 +891,18 @@ export default function JudgingApp() {
   // ── Judging state ───────────────────────────────────────────
   const [selectedCat, setSelectedCat]     = useState(null);
   const [votes, setVotes]                 = useState({});    // {entryId: 1|2|3|4}
-  const [firstPlaceComment, setFPComment] = useState("");
+  const [categoryComment, setCatComment] = useState("");
+  // { entryId: "why this photo" } for the entries this judge has placed
+  const [entryComments, setEntryComments] = useState({});
   const [viewingEssay, setViewingEssay]   = useState(null);
   const [lightbox, setLightbox]           = useState(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submittedCats, setSubmittedCats] = useState(new Set()); // submitted with ≥1 vote
   const [noAwardCats, setNoAwardCats]     = useState(new Set()); // submitted with 0 votes
   const [judgeHistory, setJudgeHistory]   = useState(null);
+  // { "<category>": "<what this judge wrote>" }, keyed exactly like
+  // judgeHistory so a runoff category looks up with its suffixed name.
+  const [judgeComments, setJudgeComments] = useState(null);
   const [viewingEssayFolder, setViewingEssayFolder] = useState(false);
   const [columnCount, setColumnCount]     = useState(3);     // 1-5 columns
   const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
@@ -918,6 +976,7 @@ export default function JudgingApp() {
       const data = await res.json();
       if (data.status === "success" && data.votes) {
         setJudgeHistory(data.votes);
+        setJudgeComments(data.comments || {});
         const done = new Set(); const noAwd = new Set();
         Object.entries(data.votes).forEach(([catName, voteArr]) => {
           const id = catId(catName);
@@ -1018,7 +1077,6 @@ export default function JudgingApp() {
   // ── Voting logic ────────────────────────────────────────────
   // hmCount and isVoteBtnDisabled are computed inside VoteRow (which receives `votes`)
   const getEntryPlace = (id) => votes[id] || null;
-  const firstPlaceId  = () => Object.keys(votes).find((k) => votes[k] === 1) || null;
 
   const toggleVote = (entryId, place) => {
     setVotes((prev) => {
@@ -1041,16 +1099,17 @@ export default function JudgingApp() {
   // ── Category selection ──────────────────────────────────────
   const handleCategorySelect = (cat) => {
     window.scrollTo(0, 0);
-    setSelectedCat(cat); setViewingEssay(null); setLightbox(null); setFPComment("");
+    setSelectedCat(cat); setViewingEssay(null); setLightbox(null);
     const histKey = cat.isRunoff ? cat.name + RUNOFF_SUFFIX : cat.name;
+    setCatComment(judgeComments?.[histKey] || "");
     if (judgeHistory?.[histKey]) {
-      const prev = {}; let comment = "";
+      const prev = {}; const notes = {};
       judgeHistory[histKey].forEach((v) => {
         prev[v.entryId] = v.place;
-        if (v.place === 1 && v.comment) comment = v.comment;
+        if (v.comment) notes[v.entryId] = v.comment;
       });
-      setVotes(prev); setFPComment(comment);
-    } else { setVotes({}); }
+      setVotes(prev); setEntryComments(notes);
+    } else { setVotes({}); setEntryComments({}); }
     if (!hasSeenTutorial) {
       setHasSeenTutorial(true);
     }
@@ -1099,6 +1158,8 @@ export default function JudgingApp() {
       round:     isRunoff ? 2 : 1,
       timestamp: new Date().toISOString(),
       noAward:   Object.keys(effectiveVotes).length === 0,
+      // One comment for the whole category, not per entry.
+      categoryComment: categoryComment.trim(),
       votes: Object.entries(effectiveVotes).map(([entryId, place]) => {
         const entry = allEntries.find((e) => e.id === entryId);
         return {
@@ -1106,7 +1167,7 @@ export default function JudgingApp() {
           title:        selectedCat.isEssayCategory ? (entry?.essayTitle || entryId) : (entry?.headline || entry?.filename || entryId),
           photographer: entry?.photographer || "",
           publication:  entry?.publication  || "",
-          comment:      place === 1 ? firstPlaceComment : "",
+          comment:      entryComments[entryId] || "",
         };
       }),
     };
@@ -1121,6 +1182,7 @@ export default function JudgingApp() {
       } else { await new Promise((r) => setTimeout(r, 700)); }
 
       setJudgeHistory((prev) => ({ ...prev, [payload.category]: payload.votes }));
+      setJudgeComments((prev) => ({ ...prev, [payload.category]: payload.categoryComment }));
       const catId = selectedCat.id;
       if (payload.noAward) { setNoAwardCats((p) => new Set([...p, catId])); }
       else                  { setSubmittedCats((p) => new Set([...p, catId])); }
@@ -1138,17 +1200,20 @@ export default function JudgingApp() {
   const activeCategories = IS_RUNOFF ? runoffCategories : categories;
 
   // ── Derived submit state ────────────────────────────────────
-  const fp = firstPlaceId();
   const inRunoff        = !!selectedCat?.isRunoff;
   const placesAssigned  = Object.keys(votes).length;
   // A runoff has exactly as many contested slots as photos, so requiring
   // every slot filled is the same as requiring every photo be labelled.
   const runoffComplete  = inRunoff &&
     placesAssigned === (selectedCat.contestedPlaces || []).length;
-  // The 1st-place comment is required in round 1 only. Judges already
-  // justified their first place there; asking again for a 2nd/3rd
-  // runoff is friction with no payoff.
-  const commentRequired = !inRunoff && !!fp && !firstPlaceComment.trim();
+  // Only the 1st place note is mandatory, and only in round 1. Notes on
+  // 2nd/3rd/HM and the category round-up are optional — asking for six
+  // required paragraphs per category would get them written grudgingly.
+  // A runoff asks for nothing: it is a ranking, not a fresh verdict.
+  const fp              = Object.keys(votes).find((k) => votes[k] === 1) || null;
+  const noteRequired    = (entryId) => !inRunoff && entryId === fp;
+  const commentRequired = !inRunoff && !!fp && !(entryComments[fp] || "").trim();
+  const commentNeeded   = false; // the category round-up is never required
   const canSubmit       = !submitLoading && !commentRequired &&
                           (!inRunoff || runoffComplete);
   const assigned        = { 1: null, 2: null, 3: null, hm: 0 };
@@ -1481,6 +1546,9 @@ export default function JudgingApp() {
             <div id={`entry-${viewingEssay.id}`} style={S.essayVotePanel}>
               <div style={S.essayVoteTitle}>Your vote for "{viewingEssay.essayTitle}"</div>
               <VoteRow entryId={viewingEssay.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
+              <EntryCommentBox place={votes[viewingEssay.id]} value={entryComments[viewingEssay.id]}
+                onChange={(t) => setEntryComments((prev) => ({ ...prev, [viewingEssay.id]: t }))}
+                required={noteRequired(viewingEssay.id)} />
               {essayPlace && (
                 <div style={{ marginTop: 10, fontSize: 14, color: PLACE_COLORS[essayPlace].bg }}>
                   Currently assigned: {PLACE_LABELS[essayPlace]}
@@ -1488,16 +1556,8 @@ export default function JudgingApp() {
               )}
             </div>
 
-            {fp === viewingEssay.id && (
-              <div style={S.commentBox}>
-                <label style={S.commentLabel}>
-                  Why does "{viewingEssay.essayTitle}" deserve 1st Place?{commentRequired ? " *" : " (optional)"}
-                </label>
-                <textarea style={S.textarea} value={firstPlaceComment}
-                  onChange={(e) => setFPComment(e.target.value)}
-                  placeholder="Share your reasoning for this 1st place selection…" />
-              </div>
-            )}
+            <CategoryCommentBox categoryName={CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name} value={categoryComment}
+              onChange={setCatComment} required={commentNeeded} />
           </div>
           <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
@@ -1570,21 +1630,16 @@ export default function JudgingApp() {
                       View {essay.imageCount} photos →
                     </button>
                     <VoteRow entryId={essay.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
+                    <EntryCommentBox place={votes[essay.id]} value={entryComments[essay.id]}
+                      onChange={(t) => setEntryComments((prev) => ({ ...prev, [essay.id]: t }))}
+                      required={noteRequired(essay.id)} />
                   </div>
                 </div>
               );
             })}
           </div>
-          {fp && selectedCat.entries.find((e) => e.id === fp) && (
-            <div style={S.commentBox}>
-              <label style={S.commentLabel}>
-                Why does "{selectedCat.entries.find((e) => e.id === fp)?.essayTitle}" deserve 1st Place?{commentRequired ? " *" : " (optional)"}
-              </label>
-              <textarea style={S.textarea} value={firstPlaceComment}
-                onChange={(e) => setFPComment(e.target.value)}
-                placeholder="Share your reasoning for this 1st place selection…" />
-            </div>
-          )}
+          <CategoryCommentBox categoryName={CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name} value={categoryComment}
+            onChange={setCatComment} required={commentNeeded} />
         </div>
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
@@ -1648,19 +1703,16 @@ export default function JudgingApp() {
                     {entry.headline && <div style={S.entryHeadline}>{entry.headline}</div>}
                     {entry.caption  && <div style={S.entryCaption}>{entry.caption}</div>}
                     <VoteRow entryId={entry.id} votes={votes} onToggleVote={toggleVote} allowedPlaces={selectedCat.contestedPlaces} maxHms={selectedCat.maxHms} />
+                    <EntryCommentBox place={votes[entry.id]} value={entryComments[entry.id]}
+                      onChange={(t) => setEntryComments((prev) => ({ ...prev, [entry.id]: t }))}
+                      required={noteRequired(entry.id)} />
                   </div>
                 </div>
               );
             })}
           </div>
-          {fp && selectedCat.entries.find((e) => e.id === fp) && (
-            <div style={S.commentBox}>
-              <label style={S.commentLabel}>Why does this image deserve 1st Place?{commentRequired ? " *" : " (optional)"}</label>
-              <textarea style={S.textarea} value={firstPlaceComment}
-                onChange={(e) => setFPComment(e.target.value)}
-                placeholder="Share your reasoning for this 1st place selection…" />
-            </div>
-          )}
+          <CategoryCommentBox categoryName={CATEGORY_DISPLAY_NAMES[selectedCat.name] || selectedCat.name} value={categoryComment}
+            onChange={setCatComment} required={commentNeeded} />
         </div>
         <SubmitBar assigned={assigned} placesAssigned={placesAssigned}
           commentRequired={commentRequired} canSubmit={canSubmit} submitLoading={submitLoading}
@@ -1701,7 +1753,7 @@ export default function JudgingApp() {
           <button style={S.smallBtn}
             onMouseEnter={(e) => { e.target.style.borderColor="#d4a017"; e.target.style.color="#d4a017"; }}
             onMouseLeave={(e) => { e.target.style.borderColor="#3a3a3a"; e.target.style.color="#aea8a4"; }}
-            onClick={() => { setPhase("browse"); setSelectedCat(null); setVotes({}); setFPComment(""); }}>
+            onClick={() => { setPhase("browse"); setSelectedCat(null); setVotes({}); setCatComment(""); setEntryComments({}); }}>
             {IS_RUNOFF ? "← Back to Tiebreakers" : "← Back to Categories"}
           </button>
         </div>

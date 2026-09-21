@@ -1,8 +1,23 @@
 # Apps Script — tie detection and round 2 runoff voting
 
-`Code.gs` is the Google Apps Script that backs the judging site. It lives in this
-repo only for version history — it still has to be **pasted into the Apps Script
-editor and re-deployed** to take effect.
+This folder holds the whole Apps Script project behind the judging site. It
+lives in the repo for version history — the files still have to be **pasted into
+the Apps Script editor and re-deployed** to take effect.
+
+| File | Script file name | What it does |
+|---|---|---|
+| `Code.gs` | `Code` | The web app: receives votes, serves history, rebuilds the Tally and Comments tabs, runs the tie/runoff machinery, exports winners to Drive, and owns the PPAGLA menu |
+| `SquarespaceExport.gs` | `SquarespaceExport` | Copies winning images into `Squarespace Upload/` renamed the way the site expects. Reads the Tally by column name |
+| `FillDriveFields.gs` | `FillDriveFields` | Fills `drive_file_id` and `image_url` on the Entries tab by matching filenames against a Drive folder |
+
+All three share one global namespace in Apps Script, so names are prefixed
+(`SQ_`, `FDF_`) to stay out of each other's way. The PPAGLA menu in `Code.gs`
+calls into the other two, so a project missing one of them will show a menu item
+that errors when clicked.
+
+**Keep the repo as the source of truth.** Edit here, then paste into the Apps
+Script editor — not the other way around. Editing in the browser and copying
+back by hand is how the two copies drifted apart before.
 
 ## What this version adds
 

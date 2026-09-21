@@ -50,7 +50,7 @@ const WINNERS_FOLDER_ID = "";
 
 // Base URL of the deployed judging site, e.g. "https://judging.example.com".
 // Used only to build a clickable round 2 link in the tie-check dialog.
-const JUDGING_SITE_URL = "";
+const JUDGING_SITE_URL = "https://ppagla-photo-judging-v2.vercel.app/";
 
 // ── Sheet names (change only if you rename your tabs) ────────
 const VOTES_SHEET_NAME   = "Votes";
@@ -1410,6 +1410,7 @@ function onOpen() {
     .addItem("Close Runoff",                  "closeRunoff")
     .addSeparator()
     .addItem("Export Winners to Drive",       "exportWinners")
+    .addItem("Export Squarespace Winners",    "exportSquarespaceWinners")
     .addSeparator()
     .addItem("Fix Votes Headers",             "fixVotesHeaders")
     .addItem("Set Drive Folder ID",           "setDriveFolderId")

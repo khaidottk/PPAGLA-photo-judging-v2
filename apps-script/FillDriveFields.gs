@@ -144,6 +144,35 @@ function fillDriveFileIds() {
   // Flush all writes
   SpreadsheetApp.flush();
 
+  // ── Step 3b: Entry rows left with no image ────────────────────────────────
+  // The reverse of `unmatched`, and the one that actually costs something: a
+  // row with no drive_file_id renders as "Image unavailable" in the judging
+  // app, so a judge is asked to rank a photo they cannot see. Nothing else
+  // surfaces it — the app fails quietly on purpose, so that a missing photo is
+  // visible to the judge and can be flagged, rather than silently dropped from
+  // the category. This report is the organizer-side half of that.
+  //
+  // Read back in one call AFTER the flush above, so column L reflects both the
+  // IDs written just now and any filled in on an earlier run. Covers every data
+  // row, including ones with a blank filename — those can never match a Drive
+  // file either, and are just as broken for the judge.
+  const rowData = sheet.getRange(2, 1, lastRow - 1, FDF_COL_DRIVE_ID).getValues();
+  const noFile = [];
+
+  rowData.forEach((row, i) => {
+    const cell     = (n) => (row[n - 1] || "").toString().trim();
+    const entryId  = cell(1);                   // A
+    const category = cell(2);                   // B
+    const filename = cell(FDF_COL_FILENAME);
+    // Entirely blank line = sheet padding below the data, not a real entry.
+    if (!entryId && !category && !filename) return;
+    if (cell(FDF_COL_DRIVE_ID)) return;         // has an image, nothing to report
+    noFile.push(
+      `row ${i + 2}  ·  ${entryId || "(no entry_id)"}  ·  ` +
+      `${category || "(no category)"}  ·  ${filename || "(NO FILENAME IN SHEET)"}`
+    );
+  });
+
   // ── Step 4: Report ────────────────────────────────────────────────────────
   const summary = [
     `✅ Done!`,
@@ -152,10 +181,29 @@ function fillDriveFileIds() {
     `• Rows updated:       ${Object.keys(updates).length}`,
     `• Drive files with no matching sheet row: ${unmatched.length}`,
     unmatched.length > 0 ? `\nUnmatched (first 20):\n${unmatched.slice(0, 20).join("\n")}` : "",
+    `\n• Entry rows still with no image: ${noFile.length}`,
   ].join("\n");
 
   Logger.log(summary);
   SpreadsheetApp.getUi().alert(summary);
+
+  // Second, separate alert so a missing photo cannot be mistaken for part of a
+  // successful run. The full list always goes to the Logs (View → Executions),
+  // since the alert box truncates long lists.
+  if (noFile.length > 0) {
+    Logger.log(`MISSING IMAGES (${noFile.length}):\n${noFile.join("\n")}`);
+    const SHOW = 30;
+    SpreadsheetApp.getUi().alert(
+      `⚠️ ${noFile.length} entry row(s) have NO IMAGE\n\n` +
+      `Judges will see "Image unavailable" for these and cannot score them. ` +
+      `Add the files to the Drive folder under exactly these filenames (shared ` +
+      `"Anyone with the link"), then run this again.\n\n` +
+      noFile.slice(0, SHOW).join("\n") +
+      (noFile.length > SHOW
+        ? `\n\n…and ${noFile.length - SHOW} more — full list in View → Executions → Logs.`
+        : "")
+    );
+  }
 }
 
 // ─── HELPER: Recursively list files in a Drive folder ───────────────────────
